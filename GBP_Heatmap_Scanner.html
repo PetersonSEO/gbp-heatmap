@@ -111,6 +111,10 @@ body{font-family:'DM Sans',sans-serif;background:#0f1117;color:#e8eaf0;height:10
 .hbtn{padding:4px 9px;font-size:10px;font-weight:600;border-radius:5px;border:1px solid rgba(255,255,255,0.15);background:transparent;color:#7a7f96;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .15s;}
 .hbtn:hover{border-color:#3b7fff;color:#3b7fff;}
 .hbtn.del:hover{border-color:#e24b4a;color:#e24b4a;}
+.acp{padding:9px 12px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.05);}
+.acp:hover{background:rgba(59,127,255,.14);}
+.acp-main{font-size:12px;font-weight:500;color:#e8eaf0;}
+.acp-sub{font-size:11px;color:#7a7f96;margin-top:1px;}
 #he{font-size:12px;color:#7a7f96;text-align:center;padding:20px 0;}
 </style>
 </head>
@@ -129,10 +133,11 @@ body{font-family:'DM Sans',sans-serif;background:#0f1117;color:#e8eaf0;height:10
     </div>
 
     <div id="scan-panel" class="on">
-      <div>
+      <div style="position:relative;">
         <div class="lbl">Search Business Name</div>
         <div class="sub">Type to search Google Business listings</div>
         <input id="biz-ac" class="inp" type="text" placeholder="e.g. All Pro Services Midvale UT" autocomplete="off" />
+        <div id="ac-drop" style="display:none;position:absolute;top:100%;left:0;right:0;background:#1e2130;border:1px solid rgba(255,255,255,0.15);border-radius:9px;margin-top:4px;box-shadow:0 8px 28px rgba(0,0,0,.6);z-index:99999;max-height:220px;overflow-y:auto;"></div>
       </div>
 
       <div id="biz-card">
@@ -226,7 +231,7 @@ let map, ac, geo, psvc;
 let biz = null, gsel = '5x5', ssel = '0.5';
 let marks = [], scan = null;
 let hist = [];
-try { hist = JSON.parse(localStorage.getItem('gbph') || '[]'); } catch(e) {}
+try { hist = JSON.parse(localStorage.getItem('gbp_history') || '[]'); } catch(e) {}
 
 // FIXED CIRCLE RADIUS IN PIXELS - always the same visual size regardless of zoom/spacing
 // The MAP zooms to fit all points, circles are always this many pixels
@@ -311,14 +316,54 @@ window.initMap = function() {
   });
   geo = new google.maps.Geocoder();
   psvc = new google.maps.places.PlacesService(map);
-  ac = new google.maps.places.Autocomplete(
-    document.getElementById('biz-ac'),
-    {types:['establishment'], fields:['geometry','name','formatted_address','place_id']}
-  );
-  ac.addListener('place_changed', () => {
-    const p = ac.getPlace();
-    if (!p.geometry) { alert('No details found. Try again.'); return; }
-    setBiz({name:p.name, address:p.formatted_address, lat:p.geometry.location.lat(), lng:p.geometry.location.lng(), placeId:p.place_id});
+  // Use AutocompleteService instead of widget - more reliable on hosted pages
+  const acSvc = new google.maps.places.AutocompleteService();
+  const acDrop = document.getElementById('ac-drop');
+  let acTimer = null;
+  let acPreds = [];
+
+  document.getElementById('biz-ac').addEventListener('input', function() {
+    clearTimeout(acTimer);
+    const val = this.value.trim();
+    if (!val || val.length < 2) { acDrop.style.display='none'; return; }
+    acTimer = setTimeout(() => {
+      acSvc.getPlacePredictions({input: val, types: ['establishment']}, (preds, status) => {
+        if (status !== google.maps.places.PlacesServiceStatus.OK || !preds) {
+          // fallback without type filter
+          acSvc.getPlacePredictions({input: val}, (p2, s2) => {
+            if (s2 === google.maps.places.PlacesServiceStatus.OK && p2) showPreds(p2);
+            else acDrop.style.display='none';
+          });
+          return;
+        }
+        showPreds(preds);
+      });
+    }, 300);
+  });
+
+  function showPreds(preds) {
+    acPreds = preds;
+    acDrop.innerHTML = preds.map((p,i) => 
+      '<div class="acp" onmousedown="pickPred('+i+')"><div class="acp-main">'+p.structured_formatting.main_text+'</div><div class="acp-sub">'+(p.structured_formatting.secondary_text||'')+'</div></div>'
+    ).join('');
+    acDrop.style.display = 'block';
+  }
+
+  window.pickPred = function(i) {
+    const pred = acPreds[i];
+    document.getElementById('biz-ac').value = pred.description;
+    acDrop.style.display = 'none';
+    psvc.getDetails({placeId: pred.place_id, fields:['geometry','name','formatted_address','place_id']}, (place, st) => {
+      if (st === google.maps.places.PlacesServiceStatus.OK) {
+        setBiz({name:place.name, address:place.formatted_address, lat:place.geometry.location.lat(), lng:place.geometry.location.lng(), placeId:place.place_id});
+      }
+    });
+  };
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.closest('#biz-ac') && !e.target.closest('#ac-drop')) {
+      acDrop.style.display = 'none';
+    }
   });
 };
 
@@ -498,11 +543,11 @@ function exportPNG() {
 function saveHist(s) {
   hist.unshift(s);
   if(hist.length>100) hist=hist.slice(0,100);
-  try { localStorage.setItem('gbph', JSON.stringify(hist)); } catch(e) {}
+  try { localStorage.setItem('gbp_history', JSON.stringify(hist)); } catch(e) {}
 }
 function delHist(id) {
   hist = hist.filter(h=>h.id!==id);
-  try { localStorage.setItem('gbph', JSON.stringify(hist)); } catch(e) {}
+  try { localStorage.setItem('gbp_history', JSON.stringify(hist)); } catch(e) {}
   renderHist(); updHC();
 }
 function updHC() {
