@@ -243,15 +243,29 @@ function setupAC(){
     if(!v||v.length<2){drop.style.display='none';return;}
     timer=setTimeout(()=>{
       // Try establishment first, fall back to no type filter
-      acSvc.getPlacePredictions({input:v,types:['establishment']},(p,s)=>{
-        if(s===google.maps.places.PlacesServiceStatus.OK&&p&&p.length){
-          showDropdown(p);
-        } else {
-          acSvc.getPlacePredictions({input:v},(p2,s2)=>{
-            if(s2===google.maps.places.PlacesServiceStatus.OK&&p2&&p2.length)showDropdown(p2);
-            else drop.style.display='none';
+      // Search both with and without type filter, merge results
+      let allPreds=[];
+      let done=0;
+      const finish=()=>{
+        done++;
+        if(done===2){
+          // Deduplicate by place_id
+          const seen=new Set();
+          const merged=allPreds.filter(p=>{
+            if(seen.has(p.place_id))return false;
+            seen.add(p.place_id);return true;
           });
+          if(merged.length)showDropdown(merged.slice(0,8));
+          else drop.style.display='none';
         }
+      };
+      acSvc.getPlacePredictions({input:v,types:['establishment']},(p,s)=>{
+        if(s===google.maps.places.PlacesServiceStatus.OK&&p)allPreds=[...allPreds,...p];
+        finish();
+      });
+      acSvc.getPlacePredictions({input:v},(p,s)=>{
+        if(s===google.maps.places.PlacesServiceStatus.OK&&p)allPreds=[...allPreds,...p];
+        finish();
       });
     },350);
   });
@@ -364,11 +378,11 @@ function drawMarks(results){
   const R=16;
   results.forEach(pt=>{
     const label=pt.rank>=20?'20+':String(pt.rank);
-    const fs=label.length>2?8:10;
+    const fs=label.length>2?9:11;
     const m=new google.maps.Marker({
       position:{lat:pt.lat,lng:pt.lng},map,
-      icon:{path:google.maps.SymbolPath.CIRCLE,scale:R,fillColor:rc(pt.rank),fillOpacity:0.95,strokeColor:'rgba(0,0,0,0.2)',strokeWeight:1.5},
-      label:{text:label,color:'#111',fontSize:fs+'px',fontWeight:'700',fontFamily:'DM Sans,sans-serif'},
+      icon:{path:google.maps.SymbolPath.CIRCLE,scale:R,fillColor:rc(pt.rank),fillOpacity:0.95,strokeColor:'rgba(0,0,0,0.25)',strokeWeight:1.5},
+      label:{text:label,color:'#ffffff',fontSize:fs+'px',fontWeight:'700',fontFamily:'DM Sans,sans-serif'},
       optimized:false
     });
     marks.push(m);
@@ -423,8 +437,8 @@ function exportPNG(){
   // so they never overlap regardless of grid/spacing combo
   const mpp=(156543.03392*Math.cos(cLat*Math.PI/180))/Math.pow(2,bz);
   const spacingPx=(parseFloat(scan.spacing)*1609.34)/mpp;
-  // Use 35% of spacing so there are clear gaps
-  const CR=Math.max(10,Math.min(40,spacingPx*0.35))*SCALE;
+  // Use 28% of spacing so circles have clear gaps between them
+  const CR=Math.max(12,Math.min(38,spacingPx*0.28))*SCALE;
 
   const styles=[
     'feature:all|element:geometry|color:0xf5f3ee',
@@ -495,16 +509,18 @@ function exportPNG(){
       ctx.lineWidth=SCALE;
       ctx.stroke();
 
-      // Number - bold, large, readable
-      const fs=label.length>2?CR*0.65:CR*0.80;
+      // Number - white with black outline for readability on any color
+      const fs=label.length>2?CR*0.62:CR*0.78;
       ctx.font=`900 ${Math.round(fs)}px Arial`;
       ctx.textAlign='center';
       ctx.textBaseline='middle';
-      // Slight white outline for contrast
-      ctx.strokeStyle='rgba(255,255,255,0.3)';
-      ctx.lineWidth=SCALE*1.5;
+      // Black outline
+      ctx.strokeStyle='rgba(0,0,0,0.7)';
+      ctx.lineWidth=SCALE*2.5;
+      ctx.lineJoin='round';
       ctx.strokeText(label,x,y);
-      ctx.fillStyle='#111111';
+      // White fill
+      ctx.fillStyle='#ffffff';
       ctx.fillText(label,x,y);
     });
 
