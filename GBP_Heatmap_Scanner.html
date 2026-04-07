@@ -235,7 +235,7 @@ try { hist = JSON.parse(localStorage.getItem('gbp_history') || '[]'); } catch(e)
 
 // FIXED CIRCLE RADIUS IN PIXELS - always the same visual size regardless of zoom/spacing
 // The MAP zooms to fit all points, circles are always this many pixels
-const CIRCLE_PX = 26;
+const CIRCLE_PX = 18;
 
 document.getElementById('hdate').textContent = new Date().toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'});
 updHC();
@@ -441,7 +441,7 @@ async function runScan() {
   const bounds = new google.maps.LatLngBounds();
   results.forEach(p => bounds.extend(new google.maps.LatLng(p.lat, p.lng)));
   // Add padding so circles at edges aren't cut off
-  map.fitBounds(bounds, {top:60, right:60, bottom:60, left:60});
+  map.fitBounds(bounds, {top:80, right:80, bottom:80, left:80});
 
   // Draw markers after map settles at correct zoom
   google.maps.event.addListenerOnce(map, 'idle', () => {
@@ -508,36 +508,128 @@ function clearScan() { clearMarks(); scan=null; if(biz) document.getElementById(
 
 function exportPNG() {
   if (!scan) { alert('Run a scan first.'); return; }
+
   let minLat=90,maxLat=-90,minLng=180,maxLng=-180;
-  scan.points.forEach(p=>{minLat=Math.min(minLat,p.lat);maxLat=Math.max(maxLat,p.lat);minLng=Math.min(minLng,p.lng);maxLng=Math.max(maxLng,p.lng);});
+  scan.points.forEach(p=>{
+    minLat=Math.min(minLat,p.lat); maxLat=Math.max(maxLat,p.lat);
+    minLng=Math.min(minLng,p.lng); maxLng=Math.max(maxLng,p.lng);
+  });
   const cLat=(minLat+maxLat)/2, cLng=(minLng+maxLng)/2;
-  const sz = 900;
-  // Find zoom for static map
-  let bz = 4;
-  for (let z=14; z>=2; z--) {
+
+  const mapW=900, mapH=780;
+  const SCALE=2; // retina
+
+  // Find zoom so grid fills ~60% of map (40% margin total = 20% each side)
+  let bz=4;
+  for(let z=14;z>=2;z--){
     const mpp=(156543.03392*Math.cos(cLat*Math.PI/180))/Math.pow(2,z);
     const lp=((maxLat-minLat)*111320)/mpp;
     const lnp=((maxLng-minLng)*111320*Math.cos(cLat*Math.PI/180))/mpp;
-    if (lp < sz*0.70 && lnp < sz*0.70) { bz=z; break; }
+    if(lp<mapH*0.60 && lnp<mapW*0.60){bz=z;break;}
   }
-  // Light style for static map
-  const st = [
+
+  // Light style static map - NO markers, just the base map
+  const styles=[
     'feature:all|element:geometry|color:0xf5f3ee',
     'feature:road|element:geometry|color:0xffffff',
+    'feature:road|element:geometry.stroke|color:0xd8d4cc',
     'feature:road.highway|element:geometry|color:0xf5c518',
+    'feature:road.highway|element:geometry.stroke|color:0xe0a800',
     'feature:water|element:geometry|color:0xaed6e8',
     'feature:poi.park|element:geometry|color:0xd4ecc4',
     'feature:poi|visibility:off',
     'feature:transit|visibility:off',
+    'feature:administrative|element:geometry.stroke|color:0xc8c4bc',
   ].map(s=>'style='+encodeURIComponent(s)).join('&');
 
-  let url = `https://maps.googleapis.com/maps/api/staticmap?center=${cLat},${cLng}&zoom=${bz}&size=${sz}x${sz}&scale=2&${st}&key=${KEY}`;
-  scan.points.forEach(p => {
-    const hex = rc(p.rank).replace('#','0x')+'ff';
-    const lbl = p.rank>=20 ? 'Z' : String(p.rank);
-    url += `&markers=color:${hex}%7Clabel:${lbl}%7Csize:mid%7C${p.lat},${p.lng}`;
-  });
-  window.open(url, '_blank');
+  const mapUrl=`https://maps.googleapis.com/maps/api/staticmap?center=${cLat},${cLng}&zoom=${bz}&size=${mapW}x${mapH}&scale=${SCALE}&${styles}&key=${KEY}`;
+
+  // Helper: convert lat/lng to pixel position on the static map canvas
+  function latLngToPixel(lat, lng) {
+    const mpp=(156543.03392*Math.cos(cLat*Math.PI/180))/Math.pow(2,bz);
+    const cx=mapW*SCALE/2, cy=mapH*SCALE/2;
+    const dx=(lng-cLng)*111320*Math.cos(cLat*Math.PI/180)/mpp;
+    const dy=(cLat-lat)*111320/mpp;
+    return {x:cx+dx, y:cy+dy};
+  }
+
+  const headerH=100;
+  const img=new Image();
+  img.crossOrigin='anonymous';
+
+  img.onload=function(){
+    const canvas=document.createElement('canvas');
+    canvas.width=mapW*SCALE;
+    canvas.height=(mapH+headerH)*SCALE;
+    const ctx=canvas.getContext('2d');
+    ctx.scale(1,1);
+
+    // ---- Header ----
+    ctx.fillStyle='#ffffff';
+    ctx.fillRect(0,0,canvas.width,headerH*SCALE);
+    ctx.fillStyle='#cccccc';
+    ctx.fillRect(0,headerH*SCALE-1,canvas.width,1);
+
+    const date=new Date(scan.date).toLocaleDateString('en-US',{month:'short',day:'2-digit',year:'numeric'});
+    ctx.fillStyle='#111111';
+    ctx.font=`bold 36px Arial`;
+    ctx.fillText(scan.biz.name, 40, 52);
+    ctx.font='22px Arial';
+    ctx.fillStyle='#555555';
+    ctx.fillText(`Search Term: ${scan.kw}`, 40, 84);
+    ctx.fillText(`AGR: ${scan.agr}   Grid: ${scan.grid}   Spacing: ${scan.spacing}mi   Date: ${date}`, 40, 112);
+
+    // ---- Map image ----
+    ctx.drawImage(img, 0, headerH*SCALE, mapW*SCALE, mapH*SCALE);
+
+    // ---- Draw circles on top of map ----
+    const R=16*SCALE; // circle radius in pixels
+    scan.points.forEach(p=>{
+      const pos=latLngToPixel(p.lat, p.lng);
+      const px=pos.x, py=pos.y+headerH*SCALE;
+      const color=rc(p.rank);
+      const label=p.rank>=20?'20+':String(p.rank);
+
+      // Shadow
+      ctx.beginPath();
+      ctx.arc(px,py,R+1,0,Math.PI*2);
+      ctx.fillStyle='rgba(0,0,0,0.18)';
+      ctx.fill();
+
+      // Circle fill
+      ctx.beginPath();
+      ctx.arc(px,py,R,0,Math.PI*2);
+      ctx.fillStyle=color;
+      ctx.fill();
+      ctx.strokeStyle='rgba(0,0,0,0.2)';
+      ctx.lineWidth=1.5;
+      ctx.stroke();
+
+      // Label - bold and large enough to read clearly
+      ctx.textAlign='center';
+      ctx.textBaseline='middle';
+      const fs=label.length>2?11*SCALE:14*SCALE;
+      // White outline for contrast
+      ctx.font=`900 ${fs}px Arial`;
+      ctx.strokeStyle='rgba(0,0,0,0.25)';
+      ctx.lineWidth=2;
+      ctx.strokeText(label,px,py);
+      // Bold black text
+      ctx.fillStyle='#111111';
+      ctx.fillText(label,px,py);
+    });
+
+    // Open result
+    canvas.toBlob(blob=>{
+      window.open(URL.createObjectURL(blob),'_blank');
+    },'image/png');
+  };
+
+  img.onerror=function(){
+    alert('Could not load map image. Check your API key has Static Maps enabled.');
+  };
+
+  img.src=mapUrl;
 }
 
 function saveHist(s) {
@@ -581,11 +673,11 @@ function loadScan(id) {
   h.points.forEach(p=>{minLat=Math.min(minLat,p.lat);maxLat=Math.max(maxLat,p.lat);minLng=Math.min(minLng,p.lng);maxLng=Math.max(maxLng,p.lng);});
   const bounds2 = new google.maps.LatLngBounds();
   h.points.forEach(p => bounds2.extend(new google.maps.LatLng(p.lat, p.lng)));
-  map.fitBounds(bounds2, {top:60, right:60, bottom:60, left:60});
+  map.fitBounds(bounds2, {top:80, right:80, bottom:80, left:80});
   google.maps.event.addListenerOnce(map, 'idle', () => drawMarks(h.points, map.getZoom()));
   switchTab('scan');
 }
-function pngH(id) { const h=hist.find(x=>x.id===id); if(!h)return; const s=scan; scan=h; exportPNG(); scan=s; }
+function pngH(id) { const h=hist.find(x=>x.id===id); if(!h)return; const prev=scan; scan=h; exportPNG(); scan=prev; }
 </script>
 <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyB17iRe_iJo30AO0Yj11x0iwVTtcgurv_k&libraries=places&callback=initMap&loading=async" defer></script>
 </body>
