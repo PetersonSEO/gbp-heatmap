@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GBP Heatmap Scanner</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #22263a;
+    --border: rgba(255,255,255,0.08);
+    --border2: rgba(255,255,255,0.14);
+    --text: #e8eaf0;
+    --muted: #7a7f96;
+    --accent: #3b7fff;
+    --accent2: #5b9fff;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+
+  #header { display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; border-bottom: 1px solid var(--border); background: var(--surface); flex-shrink: 0; }
+  #header h1 { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+  #header h1 span { color: var(--accent); }
+  .header-meta { font-size: 11px; color: var(--muted); font-family: 'DM Mono', monospace; }
+
+  #main { display: flex; flex: 1; overflow: hidden; }
+
+  #sidebar { width: 290px; min-width: 290px; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+  #tabs { display: flex; border-bottom: 1px solid var(--border); }
+  .tab { flex: 1; padding: 11px 0; font-size: 12px; font-weight: 500; text-align: center; cursor: pointer; color: var(--muted); border: none; background: transparent; transition: all 0.15s; letter-spacing: 0.02em; }
+  .tab.active { color: var(--accent); border-bottom: 2px solid var(--accent); }
+
+  #scan-panel, #history-panel { flex: 1; overflow-y: auto; padding: 16px; display: none; flex-direction: column; gap: 14px; }
+  #scan-panel.active, #history-panel.active { display: flex; }
+
+  .field-group { display: flex; flex-direction: column; gap: 5px; }
+  .field-label { font-size: 10px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+  .field-sublabel { font-size: 10px; color: var(--muted); margin-top: 2px; }
+  .field-input { width: 100%; padding: 9px 12px; border: 1px solid var(--border2); border-radius: var(--radius); font-size: 13px; color: var(--text); background: var(--surface2); outline: none; font-family: 'DM Sans', sans-serif; transition: border 0.15s; }
+  .field-input:focus { border-color: var(--accent); }
+  .field-input::placeholder { color: var(--muted); }
+
+  .pac-wrap { position: relative; }
+  #pac-dropdown { position: absolute; top: calc(100% + 4px); left: 0; right: 0; background: #1e2130; border: 1px solid var(--border2); border-radius: var(--radius); z-index: 9999; display: none; max-height: 240px; overflow-y: auto; box-shadow: 0 8px 32px rgba(0,0,0,0.5); }
+  .pac-item { padding: 10px 12px; cursor: pointer; border-bottom: 1px solid var(--border); transition: background 0.1s; }
+  .pac-item:last-child { border-bottom: none; }
+  .pac-item:hover, .pac-item.highlighted { background: rgba(59,127,255,0.12); }
+  .pac-main { font-size: 12px; font-weight: 500; color: var(--text); }
+  .pac-sub { font-size: 11px; color: var(--muted); margin-top: 1px; }
+  .pac-type { font-size: 10px; color: var(--accent); margin-top: 2px; }
+
+  .divider { display: flex; align-items: center; gap: 8px; }
+  .divider span { font-size: 10px; color: var(--muted); white-space: nowrap; }
+  .divider-line { flex: 1; height: 1px; background: var(--border); }
+
+  .opts { display: flex; gap: 5px; flex-wrap: wrap; }
+  .opt { flex: 1; min-width: 0; padding: 7px 4px; font-size: 12px; font-weight: 500; border: 1px solid var(--border2); border-radius: 7px; background: var(--surface2); color: var(--muted); cursor: pointer; transition: all 0.15s; text-align: center; white-space: nowrap; }
+  .opt.sel { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .opt:hover:not(.sel) { border-color: var(--accent); color: var(--accent); }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 6px; }
+  .lchip { display: flex; align-items: center; gap: 4px; font-size: 10px; color: var(--muted); }
+  .lswatch { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+
+  #selected-biz-card { background: var(--surface2); border: 1px solid var(--accent); border-radius: var(--radius); padding: 10px 12px; display: none; }
+  .sbc-name { font-size: 12px; font-weight: 600; color: var(--text); }
+  .sbc-addr { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .sbc-clear { font-size: 10px; color: var(--accent); cursor: pointer; margin-top: 4px; display: inline-block; }
+  .sbc-clear:hover { text-decoration: underline; }
+
+  #run-btn { width: 100%; padding: 11px; background: var(--accent); color: #fff; border: none; border-radius: var(--radius); font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.15s; font-family: 'DM Sans', sans-serif; }
+  #run-btn:hover:not(:disabled) { background: var(--accent2); }
+  #run-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  #scan-status { font-size: 11px; color: var(--muted); text-align: center; min-height: 16px; font-family: 'DM Mono', monospace; }
+
+  .hist-item { padding: 11px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface2); margin-bottom: 8px; }
+  .hist-name { font-size: 12px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hist-kw { font-size: 11px; color: var(--accent); margin-top: 2px; }
+  .hist-meta { font-size: 10px; color: var(--muted); margin-top: 3px; font-family: 'DM Mono', monospace; }
+  .hist-actions { display: flex; gap: 6px; margin-top: 8px; }
+  .hist-btn { padding: 4px 10px; font-size: 10px; font-weight: 600; border-radius: 5px; border: 1px solid var(--border2); background: transparent; color: var(--muted); cursor: pointer; transition: all 0.15s; font-family: 'DM Sans', sans-serif; }
+  .hist-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .hist-btn.danger:hover { border-color: #e24b4a; color: #e24b4a; }
+  #hist-empty { font-size: 12px; color: var(--muted); text-align: center; padding: 20px 0; }
+
+  #map-area { flex: 1; position: relative; display: flex; flex-direction: column; }
+  #map-topbar { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; background: var(--surface); border-bottom: 1px solid var(--border); flex-shrink: 0; gap: 12px; }
+  #biz-info { min-width: 0; flex: 1; }
+  #biz-name { font-size: 13px; font-weight: 600; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #biz-detail { font-size: 10px; color: var(--muted); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: 'DM Mono', monospace; }
+  #map-actions { display: flex; gap: 8px; flex-shrink: 0; }
+  .map-btn { padding: 6px 14px; font-size: 11px; font-weight: 600; border-radius: 7px; border: 1px solid var(--border2); background: var(--surface2); color: var(--text); cursor: pointer; transition: all 0.15s; font-family: 'DM Sans', sans-serif; }
+  .map-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .map-btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .map-btn.primary:hover { background: var(--accent2); }
+
+  #map { flex: 1; width: 100%; }
+  #map-placeholder { position: absolute; top: 48px; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 8px; pointer-events: none; z-index: 5; }
+  #map-placeholder p { font-size: 13px; color: var(--muted); text-align: center; line-height: 1.7; }
+
+  #progress-overlay { position: absolute; top: 48px; left: 0; right: 0; bottom: 0; background: rgba(15,17,23,0.8); display: none; align-items: center; justify-content: center; flex-direction: column; gap: 12px; z-index: 50; }
+  #progress-overlay.show { display: flex; }
+  #progress-text { font-size: 13px; color: var(--text); font-family: 'DM Mono', monospace; }
+  #progress-bar-wrap { width: 240px; height: 4px; background: var(--surface2); border-radius: 2px; overflow: hidden; }
+  #progress-bar { height: 100%; background: var(--accent); border-radius: 2px; transition: width 0.3s; width: 0%; }
+</style>
+</head>
+<body>
+
+<div id="header">
+  <h1>GBP <span>Heatmap</span> Scanner</h1>
+  <div class="header-meta" id="header-date"></div>
+</div>
+
+<div id="main">
+  <div id="sidebar">
+    <div id="tabs">
+      <button class="tab active" onclick="switchTab('scan')">Scan</button>
+      <button class="tab" onclick="switchTab('history')">History <span id="hist-count"></span></button>
+    </div>
+
+    <div id="scan-panel" class="active">
+
+      <div class="field-group">
+        <div class="field-label">Search Business Name</div>
+        <div class="field-sublabel">Type to search Google Business listings</div>
+        <div class="pac-wrap">
+          <input id="biz-input" class="field-input" placeholder="e.g. Simmons Builders..." autocomplete="off" />
+          <div id="pac-dropdown"></div>
+        </div>
+      </div>
+
+      <div id="selected-biz-card">
+        <div class="sbc-name" id="sbc-name"></div>
+        <div class="sbc-addr" id="sbc-addr"></div>
+        <span class="sbc-clear" onclick="clearBiz()">✕ Change business</span>
+      </div>
+
+      <div class="divider">
+        <div class="divider-line"></div>
+        <span>or enter address manually</span>
+        <div class="divider-line"></div>
+      </div>
+
+      <div class="field-group">
+        <div class="field-label">Manual Address / Coordinates</div>
+        <input id="addr-input" class="field-input" placeholder="123 Main St, City, State" />
+        <button style="margin-top:5px;width:100%;padding:7px;font-size:12px;font-weight:600;border:1px solid var(--border2);border-radius:7px;background:var(--surface2);color:var(--muted);cursor:pointer;font-family:'DM Sans',sans-serif;" onclick="geocodeAddress()">Use This Address</button>
+      </div>
+
+      <div class="field-group">
+        <div class="field-label">Keyword</div>
+        <input id="kw-input" class="field-input" placeholder="e.g. water damage restoration" />
+      </div>
+
+      <div class="field-group">
+        <div class="field-label">Grid Size</div>
+        <div class="opts">
+          <button class="opt sel" onclick="selOpt(this,'grid','5x5')">5×5</button>
+          <button class="opt" onclick="selOpt(this,'grid','7x7')">7×7</button>
+          <button class="opt" onclick="selOpt(this,'grid','9x9')">9×9</button>
+        </div>
+      </div>
+
+      <div class="field-group">
+        <div class="field-label">Spacing (miles)</div>
+        <div class="opts">
+          <button class="opt sel" onclick="selOpt(this,'space','0.5')">0.5</button>
+          <button class="opt" onclick="selOpt(this,'space','1')">1</button>
+          <button class="opt" onclick="selOpt(this,'space','2')">2</button>
+          <button class="opt" onclick="selOpt(this,'space','5')">5</button>
+          <button class="opt" onclick="selOpt(this,'space','10')">10</button>
+        </div>
+      </div>
+
+      <div class="field-group">
+        <div class="field-label">Rank Legend</div>
+        <div class="legend">
+          <div class="lchip"><div class="lswatch" style="background:#82cd49"></div>1–3</div>
+          <div class="lchip"><div class="lswatch" style="background:#b0d44a"></div>4–7</div>
+          <div class="lchip"><div class="lswatch" style="background:#eac847"></div>8–10</div>
+          <div class="lchip"><div class="lswatch" style="background:#df9a39"></div>11–12</div>
+          <div class="lchip"><div class="lswatch" style="background:#dd692e"></div>13–17</div>
+          <div class="lchip"><div class="lswatch" style="background:#bb3026"></div>18–19</div>
+          <div class="lchip"><div class="lswatch" style="background:#851a11"></div>20+</div>
+        </div>
+      </div>
+
+      <button id="run-btn" onclick="runScan()">Run Scan</button>
+      <div id="scan-status"></div>
+    </div>
+
+    <div id="history-panel">
+      <div id="hist-list"></div>
+      <div id="hist-empty">No scans yet. Run your first scan!</div>
+    </div>
+  </div>
+
+  <div id="map-area">
+    <div id="map-topbar">
+      <div id="biz-info">
+        <div id="biz-name">No business selected</div>
+        <div id="biz-detail"></div>
+      </div>
+      <div id="map-actions">
+        <button class="map-btn" onclick="clearScan()">Clear</button>
+        <button class="map-btn primary" onclick="exportPNG()">PNG ↗</button>
+      </div>
+    </div>
+    <div id="map"></div>
+    <div id="map-placeholder">
+      <p>Search for a business on the left<br>and run a scan to see rankings.</p>
+    </div>
+    <div id="progress-overlay">
+      <div id="progress-text">Initializing...</div>
+      <div id="progress-bar-wrap"><div id="progress-bar"></div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API_KEY = 'AIzaSyB17iRe_iJo30AO0Yj11x0iwVTtcgurv_k';
+let map, pacSvc, placesSvc, geocoder;
+let selectedBiz = null;
+let markers = [];
+let gridSel = '5x5', spaceSel = '0.5';
+let currentScan = null;
+let history = [];
+let pacDebounce = null;
+let highlightIdx = -1;
+let pacItems = [];
+
+try { history = JSON.parse(localStorage.getItem('gbp_history') || '[]'); } catch(e){ history=[]; }
+
+document.getElementById('header-date').textContent = new Date().toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'});
+updateHistCount();
+
+function switchTab(t) {
+  document.querySelectorAll('.tab').forEach((b,i) => b.classList.toggle('active',(t==='scan'&&i===0)||(t==='history'&&i===1)));
+  document.getElementById('scan-panel').classList.toggle('active', t==='scan');
+  document.getElementById('history-panel').classList.toggle('active', t==='history');
+  if(t==='history') renderHistory();
+}
+
+function selOpt(el, type, val) {
+  el.closest('.opts').querySelectorAll('.opt').forEach(b => b.classList.remove('sel'));
+  el.classList.add('sel');
+  if(type==='grid') gridSel=val; else spaceSel=val;
+}
+
+function rankColor(r) {
+  if(r<=3) return '#82cd49';
+  if(r<=7) return '#b0d44a';
+  if(r<=10) return '#eac847';
+  if(r<=12) return '#df9a39';
+  if(r<=17) return '#dd692e';
+  if(r<=19) return '#bb3026';
+  return '#851a11';
+}
+
+function mToLatLng(lat, lng, dx, dy) {
+  const R = 6378137;
+  return { lat: lat+(dy/R)*(180/Math.PI), lng: lng+(dx/R)*(180/Math.PI)/Math.cos(lat*Math.PI/180) };
+}
+
+// ---- Map Init ----
+window.initMap = function() {
+  map = new google.maps.Map(document.getElementById('map'), {
+    center: {lat:37.5,lng:-98}, zoom:5,
+    styles:[
+      {elementType:'geometry',stylers:[{color:'#1a1d27'}]},
+      {elementType:'labels.text.fill',stylers:[{color:'#7a7f96'}]},
+      {elementType:'labels.text.stroke',stylers:[{color:'#1a1d27'}]},
+      {featureType:'road',elementType:'geometry',stylers:[{color:'#22263a'}]},
+      {featureType:'road',elementType:'geometry.stroke',stylers:[{color:'#0f1117'}]},
+      {featureType:'water',elementType:'geometry',stylers:[{color:'#0d1320'}]},
+      {featureType:'poi',stylers:[{visibility:'off'}]},
+      {featureType:'transit',stylers:[{visibility:'off'}]},
+      {featureType:'administrative',elementType:'geometry',stylers:[{color:'#2a2e42'}]},
+    ],
+    disableDefaultUI:false, mapTypeControl:false, streetViewControl:false, fullscreenControl:false
+  });
+  geocoder = new google.maps.Geocoder();
+  placesSvc = new google.maps.places.PlacesService(map);
+  pacSvc = new google.maps.places.AutocompleteService();
+  setupBizInput();
+};
+
+// ---- Business Search (Places Autocomplete) ----
+function setupBizInput() {
+  const input = document.getElementById('biz-input');
+  const dd = document.getElementById('pac-dropdown');
+
+  input.addEventListener('input', function() {
+    const val = this.value.trim();
+    clearTimeout(pacDebounce);
+    if(!val || val.length < 2) { hidePac(); return; }
+    pacDebounce = setTimeout(() => searchPlaces(val), 300);
+  });
+
+  input.addEventListener('keydown', function(e) {
+    const items = dd.querySelectorAll('.pac-item');
+    if(e.key === 'ArrowDown') { e.preventDefault(); highlightIdx = Math.min(highlightIdx+1, items.length-1); updateHighlight(items); }
+    else if(e.key === 'ArrowUp') { e.preventDefault(); highlightIdx = Math.max(highlightIdx-1, 0); updateHighlight(items); }
+    else if(e.key === 'Enter') { e.preventDefault(); if(highlightIdx >= 0 && pacItems[highlightIdx]) selectBiz(pacItems[highlightIdx]); else if(pacItems[0]) selectBiz(pacItems[0]); }
+    else if(e.key === 'Escape') hidePac();
+  });
+
+  document.addEventListener('click', function(e) {
+    if(!e.target.closest('.pac-wrap')) hidePac();
+  });
+}
+
+function searchPlaces(val) {
+  if(!pacSvc) return;
+  pacSvc.getPlacePredictions({ input: val, types: ['establishment'] }, (preds, status) => {
+    if(status !== google.maps.places.PlacesServiceStatus.OK || !preds || !preds.length) {
+      // fallback: try without type filter
+      pacSvc.getPlacePredictions({ input: val }, (preds2, st2) => {
+        if(st2 === google.maps.places.PlacesServiceStatus.OK && preds2) renderPac(preds2);
+        else hidePac();
+      });
+      return;
+    }
+    renderPac(preds);
+  });
+}
+
+function renderPac(preds) {
+  pacItems = preds;
+  highlightIdx = -1;
+  const dd = document.getElementById('pac-dropdown');
+  dd.innerHTML = preds.map((p,i) => `
+    <div class="pac-item" data-idx="${i}">
+      <div class="pac-main">${p.structured_formatting ? p.structured_formatting.main_text : p.description}</div>
+      <div class="pac-sub">${p.structured_formatting ? (p.structured_formatting.secondary_text||'') : ''}</div>
+    </div>
+  `).join('');
+  dd.querySelectorAll('.pac-item').forEach((el,i) => {
+    el.addEventListener('mousedown', e => { e.preventDefault(); selectBiz(preds[i]); });
+  });
+  dd.style.display = 'block';
+}
+
+function updateHighlight(items) {
+  items.forEach((el,i) => el.classList.toggle('highlighted', i===highlightIdx));
+}
+function hidePac() { document.getElementById('pac-dropdown').style.display='none'; }
+
+function selectBiz(pred) {
+  hidePac();
+  document.getElementById('biz-input').value = pred.description;
+  placesSvc.getDetails({ placeId: pred.place_id, fields: ['geometry','name','formatted_address','place_id'] }, (place, st) => {
+    if(st === google.maps.places.PlacesServiceStatus.OK) {
+      setBiz({ name: place.name, address: place.formatted_address, lat: place.geometry.location.lat(), lng: place.geometry.location.lng(), placeId: place.place_id });
+    }
+  });
+}
+
+function geocodeAddress() {
+  const addr = document.getElementById('addr-input').value.trim();
+  if(!addr) { alert('Enter an address first.'); return; }
+  if(!geocoder) { alert('Map not ready yet, please wait a moment.'); return; }
+  geocoder.geocode({ address: addr }, (results, status) => {
+    if(status === 'OK' && results[0]) {
+      const r = results[0];
+      setBiz({ name: addr, address: r.formatted_address, lat: r.geometry.location.lat(), lng: r.geometry.location.lng(), placeId: null, isManual: true });
+    } else {
+      alert('Could not find that address. Try a more specific address.');
+    }
+  });
+}
+
+function setBiz(biz) {
+  selectedBiz = biz;
+  document.getElementById('sbc-name').textContent = biz.name;
+  document.getElementById('sbc-addr').textContent = biz.address;
+  document.getElementById('selected-biz-card').style.display = 'block';
+  document.getElementById('biz-input').value = '';
+  document.getElementById('biz-name').textContent = biz.name;
+  document.getElementById('biz-name').style.color = 'var(--text)';
+  document.getElementById('biz-detail').textContent = biz.address;
+  document.getElementById('map-placeholder').style.display = 'none';
+  map.panTo({lat: biz.lat, lng: biz.lng});
+  map.setZoom(12);
+}
+
+function clearBiz() {
+  selectedBiz = null;
+  document.getElementById('selected-biz-card').style.display = 'none';
+  document.getElementById('biz-input').value = '';
+  document.getElementById('biz-name').textContent = 'No business selected';
+  document.getElementById('biz-name').style.color = 'var(--muted)';
+  document.getElementById('biz-detail').textContent = '';
+  clearMarkers();
+}
+
+// ---- Scan ----
+async function runScan() {
+  if(!map) { alert('Map still loading.'); return; }
+  if(!selectedBiz) { alert('Please select or enter a business first.'); return; }
+  const kw = document.getElementById('kw-input').value.trim();
+  if(!kw) { alert('Please enter a keyword.'); return; }
+
+  const btn = document.getElementById('run-btn');
+  btn.disabled = true;
+  clearMarkers();
+
+  const [cols, rows] = gridSel.split('x').map(Number);
+  const spacingM = parseFloat(spaceSel) * 1609.34;
+  const hc = Math.floor(cols/2), hr = Math.floor(rows/2);
+  const points = [];
+  for(let r=-hr; r<=hr; r++) for(let c=-hc; c<=hc; c++) {
+    points.push({ pos: mToLatLng(selectedBiz.lat, selectedBiz.lng, c*spacingM, -r*spacingM) });
+  }
+
+  const overlay = document.getElementById('progress-overlay');
+  const pText = document.getElementById('progress-text');
+  const pBar = document.getElementById('progress-bar');
+  overlay.classList.add('show');
+
+  const results = [];
+  for(let i=0; i<points.length; i++) {
+    pText.textContent = `Scanning point ${i+1} of ${points.length}`;
+    pBar.style.width = Math.round((i/points.length)*100)+'%';
+    const rank = await getRank(points[i].pos, kw);
+    results.push({ pos: points[i].pos, rank });
+  }
+  pBar.style.width = '100%';
+  setTimeout(()=>overlay.classList.remove('show'), 500);
+
+  const zoom = map.getZoom();
+  const circleScale = Math.max(12, Math.min(26, 160/cols)) * (zoom/12);
+  results.forEach(pt => {
+    const color = rankColor(pt.rank);
+    const m = new google.maps.Marker({
+      position: pt.pos, map,
+      icon: { path: google.maps.SymbolPath.CIRCLE, scale: circleScale, fillColor: color, fillOpacity: 0.93, strokeColor: 'rgba(0,0,0,0.3)', strokeWeight: 1.5 },
+      label: { text: pt.rank >= 20 ? '20+' : String(pt.rank), color: '#000', fontSize: '11px', fontWeight: '700' }
+    });
+    markers.push(m);
+  });
+
+  const agr = (results.reduce((s,p)=>s+p.rank,0)/results.length).toFixed(1);
+  document.getElementById('biz-detail').textContent = `${selectedBiz.address}  ·  "${kw}"  ·  AGR: ${agr}`;
+
+  currentScan = { id: Date.now(), biz: selectedBiz, kw, grid: gridSel, spacing: spaceSel, points: results, agr, date: new Date().toISOString() };
+  saveHistory(currentScan);
+  btn.disabled = false;
+  document.getElementById('scan-status').textContent = `✓ ${points.length} points scanned · AGR: ${agr}`;
+  setTimeout(()=>document.getElementById('scan-status').textContent='', 5000);
+  updateHistCount();
+}
+
+function getRank(pos, kw) {
+  return new Promise(resolve => {
+    if(!placesSvc || !selectedBiz.placeId) { resolve(21); return; }
+    placesSvc.nearbySearch({
+      location: new google.maps.LatLng(pos.lat, pos.lng),
+      rankBy: google.maps.places.RankBy.DISTANCE,
+      keyword: kw
+    }, (res, st) => {
+      if(st === google.maps.places.PlacesServiceStatus.OK && res) {
+        const idx = res.findIndex(r => r.place_id === selectedBiz.placeId);
+        resolve(idx >= 0 ? idx+1 : 21);
+      } else resolve(21);
+    });
+  });
+}
+
+function clearMarkers() { markers.forEach(m=>m.setMap(null)); markers=[]; }
+function clearScan() { clearMarkers(); currentScan=null; if(selectedBiz) document.getElementById('biz-detail').textContent=selectedBiz.address; }
+
+// ---- PNG Export ----
+function exportPNG() {
+  if(!currentScan) { alert('Run a scan first.'); return; }
+  const zoom = map.getZoom();
+  let url = `https://maps.googleapis.com/maps/api/staticmap?center=${currentScan.biz.lat},${currentScan.biz.lng}&zoom=${zoom}&size=1280x960&maptype=roadmap&key=${API_KEY}`;
+  currentScan.points.forEach(pt => {
+    const hex = rankColor(pt.rank).replace('#','0x')+'FF';
+    const label = pt.rank>=20?'X':String(pt.rank);
+    url += `&markers=color:${hex}%7Clabel:${label}%7Csize:mid%7C${pt.pos.lat},${pt.pos.lng}`;
+  });
+  window.open(url,'_blank');
+}
+
+// ---- History ----
+function saveHistory(scan) {
+  history.unshift(scan);
+  if(history.length>100) history=history.slice(0,100);
+  try { localStorage.setItem('gbp_history', JSON.stringify(history)); } catch(e){}
+}
+function deleteHistory(id) {
+  history = history.filter(h=>h.id!==id);
+  try { localStorage.setItem('gbp_history', JSON.stringify(history)); } catch(e){}
+  renderHistory(); updateHistCount();
+}
+function updateHistCount() {
+  document.getElementById('hist-count').textContent = history.length ? `(${history.length})` : '';
+}
+function renderHistory() {
+  const el = document.getElementById('hist-list');
+  const empty = document.getElementById('hist-empty');
+  if(!history.length) { el.innerHTML=''; empty.style.display='block'; return; }
+  empty.style.display='none';
+  el.innerHTML = history.map(h=>`
+    <div class="hist-item">
+      <div class="hist-name">${h.biz.name}</div>
+      <div class="hist-kw">${h.kw}</div>
+      <div class="hist-meta">${h.grid} · ${h.spacing}mi · AGR ${h.agr} · ${new Date(h.date).toLocaleDateString()}</div>
+      <div class="hist-actions">
+        <button class="hist-btn" onclick="loadScan(${h.id})">Load</button>
+        <button class="hist-btn" onclick="exportHistPNG(${h.id})">PNG ↗</button>
+        <button class="hist-btn danger" onclick="deleteHistory(${h.id})">Delete</button>
+      </div>
+    </div>
+  `).join('');
+}
+function loadScan(id) {
+  const h = history.find(x=>x.id===id);
+  if(!h) return;
+  clearMarkers();
+  selectedBiz=h.biz; currentScan=h;
+  setBiz(h.biz);
+  document.getElementById('kw-input').value=h.kw;
+  const [cols]=h.grid.split('x').map(Number);
+  map.setZoom(11);
+  const scale=Math.max(12,Math.min(26,160/cols))*(11/12);
+  h.points.forEach(pt=>{
+    const m=new google.maps.Marker({
+      position:pt.pos,map,
+      icon:{path:google.maps.SymbolPath.CIRCLE,scale,fillColor:rankColor(pt.rank),fillOpacity:0.93,strokeColor:'rgba(0,0,0,0.3)',strokeWeight:1.5},
+      label:{text:pt.rank>=20?'20+':String(pt.rank),color:'#000',fontSize:'11px',fontWeight:'700'}
+    });
+    markers.push(m);
+  });
+  document.getElementById('biz-detail').textContent=`${h.biz.address}  ·  "${h.kw}"  ·  AGR: ${h.agr}`;
+  switchTab('scan');
+}
+function exportHistPNG(id) {
+  const h=history.find(x=>x.id===id);
+  if(!h) return;
+  let url=`https://maps.googleapis.com/maps/api/staticmap?center=${h.biz.lat},${h.biz.lng}&zoom=11&size=1280x960&maptype=roadmap&key=${API_KEY}`;
+  h.points.forEach(pt=>{
+    const hex=rankColor(pt.rank).replace('#','0x')+'FF';
+    const label=pt.rank>=20?'X':String(pt.rank);
+    url+=`&markers=color:${hex}%7Clabel:${label}%7Csize:mid%7C${pt.pos.lat},${pt.pos.lng}`;
+  });
+  window.open(url,'_blank');
+}
+</script>
+
+<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyB17iRe_iJo30AO0Yj11x0iwVTtcgurv_k&libraries=places&callback=initMap&loading=async" defer></script>
+</body>
+</html>
