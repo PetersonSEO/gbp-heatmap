@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GBP Heatmap Scanner</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><path d='M50 5C31 5 16 20 16 39c0 22 34 56 34 56s34-34 34-56C84 20 69 5 50 5z' fill='%233b7fff'/><circle cx='50' cy='38' r='14' fill='white'/><circle cx='50' cy='38' r='7' fill='%233b7fff'/></svg>">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'DM Sans',sans-serif;background:#0f1117;color:#e8eaf0;height:100vh;overflow:hidden;display:flex;flex-direction:column;}
+#header{display:flex;align-items:center;justify-content:space-between;padding:11px 20px;background:#1a1d27;border-bottom:1px solid rgba(255,255,255,0.08);flex-shrink:0;}
+#header h1{font-size:15px;font-weight:600;}
+#header h1 span{color:#3b7fff;}
+#hdate{font-size:11px;color:#7a7f96;font-family:'DM Mono',monospace;}
+#main{display:flex;flex:1;overflow:hidden;}
+#sidebar{width:272px;min-width:272px;background:#1a1d27;border-right:1px solid rgba(255,255,255,0.08);display:flex;flex-direction:column;overflow:hidden;}
+#map-area{flex:1;display:flex;flex-direction:column;overflow:hidden;}
+#tabs{display:flex;border-bottom:1px solid rgba(255,255,255,0.08);}
+.tab{flex:1;padding:10px 0;font-size:12px;font-weight:500;text-align:center;cursor:pointer;color:#7a7f96;border:none;background:transparent;}
+.tab.on{color:#3b7fff;border-bottom:2px solid #3b7fff;}
+#scan-panel,#hist-panel{flex:1;overflow-y:auto;padding:14px;display:none;flex-direction:column;gap:11px;}
+#scan-panel.on,#hist-panel.on{display:flex;}
+.lbl{font-size:10px;font-weight:600;color:#7a7f96;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px;}
+.sub{font-size:10px;color:#7a7f96;margin-bottom:4px;}
+.inp{width:100%!important;padding:8px 11px!important;border:1px solid rgba(255,255,255,0.15)!important;border-radius:9px!important;font-size:13px!important;color:#e8eaf0!important;background:#22263a!important;outline:none!important;font-family:'DM Sans',sans-serif!important;}
+.inp:focus{border-color:#3b7fff!important;}
+.inp::placeholder{color:#7a7f96!important;}
+#ac-wrap{position:relative;}
+#ac-drop{display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;background:#1e2130;border:1px solid rgba(255,255,255,0.15);border-radius:9px;z-index:99999;max-height:220px;overflow-y:auto;box-shadow:0 8px 28px rgba(0,0,0,.6);}
+.acp{padding:9px 12px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.05);}
+.acp:last-child{border-bottom:none;}
+.acp:hover{background:rgba(59,127,255,.14);}
+.acp-main{font-size:12px;font-weight:500;color:#e8eaf0;}
+.acp-sub{font-size:11px;color:#7a7f96;margin-top:1px;}
+#biz-card{background:rgba(59,127,255,.09);border:1px solid rgba(59,127,255,.32);border-radius:9px;padding:9px 11px;display:none;}
+.bc-name{font-size:12px;font-weight:600;}
+.bc-addr{font-size:11px;color:#7a7f96;margin-top:2px;}
+.bc-clr{font-size:10px;color:#3b7fff;cursor:pointer;margin-top:5px;display:inline-block;}
+.dvd{display:flex;align-items:center;gap:8px;}
+.dvd span{font-size:10px;color:#7a7f96;white-space:nowrap;}
+.dvd-line{flex:1;height:1px;background:rgba(255,255,255,0.08);}
+#addr-btn{width:100%;margin-top:5px;padding:7px;font-size:12px;font-weight:600;border:1px solid rgba(255,255,255,0.15);border-radius:7px;background:#22263a;color:#7a7f96;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .15s;}
+#addr-btn:hover{border-color:#3b7fff;color:#3b7fff;}
+.opts{display:flex;gap:4px;}
+.opt{flex:1;padding:6px 2px;font-size:12px;font-weight:500;border:1px solid rgba(255,255,255,0.15);border-radius:7px;background:#22263a;color:#7a7f96;cursor:pointer;text-align:center;white-space:nowrap;transition:all .15s;}
+.opt.on{background:#3b7fff;color:#fff;border-color:#3b7fff;}
+.opt:hover:not(.on){border-color:#3b7fff;color:#3b7fff;}
+.legend{display:flex;flex-wrap:wrap;gap:5px;}
+.lchip{display:flex;align-items:center;gap:3px;font-size:10px;color:#7a7f96;}
+.lsw{width:9px;height:9px;border-radius:50%;}
+#run-btn{width:100%;padding:10px;background:#3b7fff;color:#fff;border:none;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .15s;}
+#run-btn:hover:not(:disabled){background:#5b9fff;}
+#run-btn:disabled{opacity:.4;cursor:not-allowed;}
+#status{font-size:11px;color:#7a7f96;text-align:center;min-height:14px;font-family:'DM Mono',monospace;}
+#topbar{display:flex;align-items:center;justify-content:space-between;padding:9px 14px;background:#1a1d27;border-bottom:1px solid rgba(255,255,255,0.08);flex-shrink:0;gap:12px;}
+#biz-info{min-width:0;flex:1;}
+#bn{font-size:13px;font-weight:600;color:#7a7f96;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+#bd{font-size:10px;color:#7a7f96;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:'DM Mono',monospace;}
+#map-btns{display:flex;gap:7px;flex-shrink:0;}
+.mbtn{padding:6px 13px;font-size:11px;font-weight:600;border-radius:7px;border:1px solid rgba(255,255,255,0.15);background:#22263a;color:#e8eaf0;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .15s;}
+.mbtn:hover{border-color:#3b7fff;color:#3b7fff;}
+.mbtn.pri{background:#3b7fff;border-color:#3b7fff;color:#fff;}
+.mbtn.pri:hover{background:#5b9fff;}
+#map-wrap{flex:1;position:relative;overflow:hidden;}
+#map{width:100%;height:100%;}
+#ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;pointer-events:none;z-index:5;}
+#ph p{font-size:13px;color:#7a7f96;text-align:center;line-height:1.7;}
+#prog{position:absolute;inset:0;background:rgba(15,17,23,.86);display:none;align-items:center;justify-content:center;flex-direction:column;gap:12px;z-index:50;}
+#prog.on{display:flex;}
+#pt{font-size:13px;color:#e8eaf0;font-family:'DM Mono',monospace;}
+#pb-wrap{width:240px;height:4px;background:#22263a;border-radius:2px;overflow:hidden;}
+#pb{height:100%;background:#3b7fff;border-radius:2px;transition:width .3s;width:0%;}
+.hi{padding:10px 11px;border:1px solid rgba(255,255,255,0.08);border-radius:9px;background:#22263a;margin-bottom:7px;}
+.hi-name{font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.hi-kw{font-size:11px;color:#3b7fff;margin-top:2px;}
+.hi-meta{font-size:10px;color:#7a7f96;margin-top:2px;font-family:'DM Mono',monospace;}
+.hi-acts{display:flex;gap:5px;margin-top:7px;}
+.hbtn{padding:4px 9px;font-size:10px;font-weight:600;border-radius:5px;border:1px solid rgba(255,255,255,0.15);background:transparent;color:#7a7f96;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .15s;}
+.hbtn:hover{border-color:#3b7fff;color:#3b7fff;}
+.hbtn.del:hover{border-color:#e24b4a;color:#e24b4a;}
+#he{font-size:12px;color:#7a7f96;text-align:center;padding:20px 0;}
+</style>
+</head>
+<body>
+<div id="header">
+  <h1>GBP <span>Heatmap</span> Scanner</h1>
+  <div id="hdate"></div>
+</div>
+<div id="main">
+  <div id="sidebar">
+    <div id="tabs">
+      <button class="tab on" onclick="switchTab('scan')">Scan</button>
+      <button class="tab" onclick="switchTab('hist')">History <span id="hc"></span></button>
+    </div>
+    <div id="scan-panel" class="on">
+      <div>
+        <div class="lbl">Search Business Name</div>
+        <div class="sub">Type name + city, press Enter or click Search</div>
+        <div id="ac-wrap">
+          <input id="biz-ac" class="inp" type="text" placeholder="e.g. Simmons Builders Alexandria LA" autocomplete="off" />
+          <div id="ac-drop"></div>
+        </div>
+        <button id="biz-search-btn" onclick="forceSearch()" style="width:100%;margin-top:5px;padding:7px;font-size:12px;font-weight:600;border:1px solid rgba(59,127,255,0.5);border-radius:7px;background:rgba(59,127,255,0.1);color:#3b7fff;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .15s;">Search ↵</button>
+      </div>
+      <div id="biz-card">
+        <div class="bc-name" id="bcn"></div>
+        <div class="bc-addr" id="bca"></div>
+        <span class="bc-clr" onclick="clearBiz()">✕ Change business</span>
+      </div>
+      <div class="dvd"><div class="dvd-line"></div><span>or enter address manually</span><div class="dvd-line"></div></div>
+      <div>
+        <div class="lbl">Manual Address</div>
+        <div class="sub">For new / unverified GBPs</div>
+        <input id="addr-in" class="inp" type="text" placeholder="123 Main St, City, State" />
+        <button id="addr-btn" onclick="geoAddr()">Use This Address ↵</button>
+      </div>
+      <div>
+        <div class="lbl">Keyword</div>
+        <input id="kw" class="inp" type="text" placeholder="e.g. water damage restoration" />
+      </div>
+      <div>
+        <div class="lbl">Grid Size</div>
+        <div class="opts" id="gopts">
+          <button class="opt on" onclick="pick(this,'g','5x5')">5×5</button>
+          <button class="opt" onclick="pick(this,'g','7x7')">7×7</button>
+          <button class="opt" onclick="pick(this,'g','9x9')">9×9</button>
+        </div>
+      </div>
+      <div>
+        <div class="lbl">Spacing (miles)</div>
+        <div class="opts" id="sopts">
+          <button class="opt on" onclick="pick(this,'s','0.5')">0.5</button>
+          <button class="opt" onclick="pick(this,'s','1')">1</button>
+          <button class="opt" onclick="pick(this,'s','2')">2</button>
+          <button class="opt" onclick="pick(this,'s','5')">5</button>
+          <button class="opt" onclick="pick(this,'s','10')">10</button>
+        </div>
+      </div>
+      <div>
+        <div class="lbl">Rank Legend</div>
+        <div class="legend">
+          <div class="lchip"><div class="lsw" style="background:#82cd49"></div>1–3</div>
+          <div class="lchip"><div class="lsw" style="background:#b0d44a"></div>4–7</div>
+          <div class="lchip"><div class="lsw" style="background:#eac847"></div>8–10</div>
+          <div class="lchip"><div class="lsw" style="background:#df9a39"></div>11–12</div>
+          <div class="lchip"><div class="lsw" style="background:#dd692e"></div>13–17</div>
+          <div class="lchip"><div class="lsw" style="background:#bb3026"></div>18–19</div>
+          <div class="lchip"><div class="lsw" style="background:#851a11"></div>20+</div>
+        </div>
+      </div>
+      <button id="run-btn" onclick="runScan()">Run Scan</button>
+      <div id="status"></div>
+    </div>
+    <div id="hist-panel">
+      <div id="hist-list"></div>
+      <div id="he">No scans yet. Run your first scan!</div>
+    </div>
+  </div>
+  <div id="map-area">
+    <div id="topbar">
+      <div id="biz-info">
+        <div id="bn">No business selected</div>
+        <div id="bd"></div>
+      </div>
+      <div id="map-btns">
+        <button class="mbtn" onclick="clearScan()">Clear</button>
+        <button class="mbtn pri" onclick="exportPNG()">PNG ↗</button>
+      </div>
+    </div>
+    <div id="map-wrap">
+      <div id="map"></div>
+      <div id="ph"><p>Search for a business on the left<br>and run a scan to see rankings.</p></div>
+      <div id="prog"><div id="pt">Scanning...</div><div id="pb-wrap"><div id="pb"></div></div></div>
+    </div>
+  </div>
+</div>
+<script>
+const KEY='AIzaSyB17iRe_iJo30AO0Yj11x0iwVTtcgurv_k';
+let map,acSvc,geo,psvc;
+let biz=null,gsel='5x5',ssel='0.5';
+let marks=[],scan=null;
+let hist=[];
+try{hist=JSON.parse(localStorage.getItem('gbp_history')||'[]');}catch(e){}
+
+document.getElementById('hdate').textContent=new Date().toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'});
+updHC();
+
+function switchTab(t){
+  document.querySelectorAll('.tab').forEach((b,i)=>b.classList.toggle('on',(t==='scan'&&i===0)||(t==='hist'&&i===1)));
+  document.getElementById('scan-panel').classList.toggle('on',t==='scan');
+  document.getElementById('hist-panel').classList.toggle('on',t==='hist');
+  if(t==='hist')renderHist();
+}
+function pick(el,type,val){
+  el.closest('.opts').querySelectorAll('.opt').forEach(b=>b.classList.remove('on'));
+  el.classList.add('on');
+  if(type==='g')gsel=val;else ssel=val;
+}
+function rc(r){
+  if(r<=3)return'#82cd49';if(r<=7)return'#b0d44a';if(r<=10)return'#eac847';
+  if(r<=12)return'#df9a39';if(r<=17)return'#dd692e';if(r<=19)return'#bb3026';
+  return'#851a11';
+}
+function offset(lat,lng,dx,dy){
+  const R=6378137;
+  return{lat:lat+(dy/R)*(180/Math.PI),lng:lng+(dx/R)*(180/Math.PI)/Math.cos(lat*Math.PI/180)};
+}
+
+window.initMap=function(){
+  const style=[
+    {elementType:'geometry',stylers:[{color:'#f5f3ee'}]},
+    {elementType:'labels.text.fill',stylers:[{color:'#555'}]},
+    {elementType:'labels.text.stroke',stylers:[{color:'#f5f3ee'}]},
+    {featureType:'road',elementType:'geometry',stylers:[{color:'#ffffff'}]},
+    {featureType:'road',elementType:'geometry.stroke',stylers:[{color:'#d4d0c8'}]},
+    {featureType:'road.highway',elementType:'geometry',stylers:[{color:'#f5c518'}]},
+    {featureType:'road.highway',elementType:'geometry.stroke',stylers:[{color:'#e0a800'}]},
+    {featureType:'water',elementType:'geometry',stylers:[{color:'#aed6e8'}]},
+    {featureType:'poi.park',elementType:'geometry',stylers:[{color:'#d4ecc4'}]},
+    {featureType:'poi',elementType:'labels',stylers:[{visibility:'off'}]},
+    {featureType:'transit',stylers:[{visibility:'off'}]},
+    {featureType:'administrative',elementType:'geometry.stroke',stylers:[{color:'#c8c4bc'}]},
+  ];
+  map=new google.maps.Map(document.getElementById('map'),{
+    center:{lat:39.5,lng:-98.35},zoom:4,
+    styles:style,
+    mapTypeControl:false,streetViewControl:false,fullscreenControl:false
+  });
+  geo=new google.maps.Geocoder();
+  psvc=new google.maps.places.PlacesService(map);
+  acSvc=new google.maps.places.AutocompleteService();
+  setupAC();
+};
+
+function forceSearch(){
+  const v=document.getElementById('biz-ac').value.trim();
+  if(!v){alert('Enter a business name first.');return;}
+  if(!psvc){alert('Map not loaded yet, please wait a moment.');return;}
+  const drop=document.getElementById('ac-drop');
+  drop.innerHTML='<div class="acp"><div class="acp-main" style="color:#7a7f96">Searching...</div></div>';
+  drop.style.display='block';
+  psvc.textSearch({query:v},(res,st)=>{
+    if(st===google.maps.places.PlacesServiceStatus.OK&&res&&res.length){
+      const results=res;
+      drop.innerHTML=results.slice(0,8).map((r,i)=>`<div class="acp" data-i="${i}"><div class="acp-main">${r.name}</div><div class="acp-sub">${r.formatted_address||''}</div></div>`).join('');
+      drop.querySelectorAll('.acp').forEach(el=>{
+        el.addEventListener('mousedown',e=>{
+          e.preventDefault();
+          const r=results[+el.dataset.i];
+          document.getElementById('biz-ac').value=r.name;
+          drop.style.display='none';
+          setBiz({name:r.name,address:r.formatted_address,lat:r.geometry.location.lat(),lng:r.geometry.location.lng(),placeId:r.place_id});
+        });
+      });
+    } else {
+      drop.innerHTML='<div class="acp"><div class="acp-main" style="color:#e24b4a">No results. Try: Business Name City State</div></div>';
+    }
+  });
+}
+
+function setupAC(){
+  const input=document.getElementById('biz-ac');
+  const drop=document.getElementById('ac-drop');
+  let timer=null,preds=[],textResults=[];
+
+  input.addEventListener('input',function(){
+    clearTimeout(timer);
+    const v=this.value.trim();
+    if(!v||v.length<2){drop.style.display='none';return;}
+    timer=setTimeout(()=>doSearch(v),350);
+  });
+
+  input.addEventListener('keydown',function(e){
+    if(e.key==='Enter'){
+      e.preventDefault();
+      clearTimeout(timer);
+      const v=this.value.trim();
+      if(!v)return;
+      if(preds.length) selectPred(preds[0]);
+      else if(textResults.length) selectTextResult(textResults[0]);
+      else doTextSearch(v);
+    }
+    if(e.key==='Escape')drop.style.display='none';
+  });
+
+  function doSearch(v){
+    let allPreds=[]; let done=0;
+    const finish=()=>{
+      done++;
+      if(done===2){
+        const seen=new Set();
+        const merged=allPreds.filter(p=>{if(seen.has(p.place_id))return false;seen.add(p.place_id);return true;});
+        if(merged.length){preds=merged;showAC(merged.slice(0,8));}
+        else doTextSearch(v);
+      }
+    };
+    acSvc.getPlacePredictions({input:v,types:['establishment']},(p,s)=>{if(s===google.maps.places.PlacesServiceStatus.OK&&p)allPreds=[...allPreds,...p];finish();});
+    acSvc.getPlacePredictions({input:v},(p,s)=>{if(s===google.maps.places.PlacesServiceStatus.OK&&p)allPreds=[...allPreds,...p];finish();});
+  }
+
+  function doTextSearch(v){
+    psvc.textSearch({query:v},(res,st)=>{
+      if(st===google.maps.places.PlacesServiceStatus.OK&&res&&res.length){
+        textResults=res;
+        drop.innerHTML=res.slice(0,8).map((r,i)=>`<div class="acp" data-t="tr" data-i="${i}"><div class="acp-main">${r.name}</div><div class="acp-sub">${r.formatted_address||''}</div></div>`).join('');
+        bind(); drop.style.display='block';
+      } else {
+        drop.innerHTML='<div class="acp"><div class="acp-main" style="color:#7a7f96">No results. Try adding city or state.</div></div>';
+        drop.style.display='block';
+      }
+    });
+  }
+
+  function showAC(p){
+    drop.innerHTML=p.map((r,i)=>`<div class="acp" data-t="ac" data-i="${i}"><div class="acp-main">${r.structured_formatting?r.structured_formatting.main_text:r.description}</div><div class="acp-sub">${r.structured_formatting?(r.structured_formatting.secondary_text||''):''}</div></div>`).join('');
+    bind(); drop.style.display='block';
+  }
+
+  function bind(){
+    drop.querySelectorAll('.acp').forEach(el=>{
+      el.addEventListener('mousedown',e=>{
+        e.preventDefault();
+        const i=+el.dataset.i;
+        if(el.dataset.t==='ac') selectPred(preds[i]);
+        else selectTextResult(textResults[i]);
+      });
+    });
+  }
+
+  function selectPred(pred){
+    input.value=pred.description; drop.style.display='none';
+    psvc.getDetails({placeId:pred.place_id,fields:['geometry','name','formatted_address','place_id']},(place,st)=>{
+      if(st===google.maps.places.PlacesServiceStatus.OK)
+        setBiz({name:place.name,address:place.formatted_address,lat:place.geometry.location.lat(),lng:place.geometry.location.lng(),placeId:place.place_id});
+    });
+  }
+
+  function selectTextResult(r){
+    input.value=r.name; drop.style.display='none';
+    setBiz({name:r.name,address:r.formatted_address,lat:r.geometry.location.lat(),lng:r.geometry.location.lng(),placeId:r.place_id});
+  }
+
+  document.addEventListener('click',e=>{if(!e.target.closest('#ac-wrap'))drop.style.display='none';});
+}
+
+function setBiz(b){
+  biz=b;
+  document.getElementById('bcn').textContent=b.name;
+  document.getElementById('bca').textContent=b.address;
+  document.getElementById('biz-card').style.display='block';
+  document.getElementById('biz-ac').value='';
+  document.getElementById('bn').textContent=b.name;
+  document.getElementById('bn').style.color='#e8eaf0';
+  document.getElementById('bd').textContent=b.address;
+  document.getElementById('ph').style.display='none';
+  map.panTo({lat:b.lat,lng:b.lng});
+  map.setZoom(12);
+}
+function clearBiz(){
+  biz=null;
+  document.getElementById('biz-card').style.display='none';
+  document.getElementById('biz-ac').value='';
+  document.getElementById('bn').textContent='No business selected';
+  document.getElementById('bn').style.color='#7a7f96';
+  document.getElementById('bd').textContent='';
+  clearMarks();
+}
+function geoAddr(){
+  const a=document.getElementById('addr-in').value.trim();
+  if(!a){alert('Enter an address first.');return;}
+  geo.geocode({address:a},(res,st)=>{
+    if(st==='OK'&&res[0]){
+      const r=res[0];
+      setBiz({name:a,address:r.formatted_address,lat:r.geometry.location.lat(),lng:r.geometry.location.lng(),placeId:null,manual:true});
+    }else alert('Address not found.');
+  });
+}
+
+async function runScan(){
+  if(!biz){alert('Select a business first.');return;}
+  const kw=document.getElementById('kw').value.trim();
+  if(!kw){alert('Enter a keyword.');return;}
+  document.getElementById('run-btn').disabled=true;
+  clearMarks();
+  const[cols,rows]=gsel.split('x').map(Number);
+  const sm=parseFloat(ssel)*1609.34;
+  const hc=Math.floor(cols/2),hr=Math.floor(rows/2);
+  const pts=[];
+  for(let r=-hr;r<=hr;r++)for(let c=-hc;c<=hc;c++)pts.push(offset(biz.lat,biz.lng,c*sm,-r*sm));
+
+  const prog=document.getElementById('prog');prog.classList.add('on');
+  const results=[];
+  for(let i=0;i<pts.length;i++){
+    document.getElementById('pt').textContent=`Scanning point ${i+1} of ${pts.length}`;
+    document.getElementById('pb').style.width=Math.round(i/pts.length*100)+'%';
+    results.push({lat:pts[i].lat,lng:pts[i].lng,rank:await getRank(pts[i],kw)});
+  }
+  document.getElementById('pb').style.width='100%';
+  setTimeout(()=>prog.classList.remove('on'),400);
+
+  const agr=(results.reduce((s,p)=>s+p.rank,0)/results.length).toFixed(1);
+  document.getElementById('bd').textContent=`${biz.address}  ·  "${kw}"  ·  AGR: ${agr}`;
+  scan={id:Date.now(),biz,kw,grid:gsel,spacing:ssel,points:results,agr,date:new Date().toISOString()};
+
+  // Fit map with generous padding so circles don't touch edges
+  const bounds=new google.maps.LatLngBounds();
+  results.forEach(p=>bounds.extend(new google.maps.LatLng(p.lat,p.lng)));
+  map.fitBounds(bounds,100);
+  google.maps.event.addListenerOnce(map,'idle',()=>drawMarks(results));
+
+  saveHist(scan);
+  document.getElementById('run-btn').disabled=false;
+  document.getElementById('status').textContent=`✓ ${pts.length} points · AGR: ${agr}`;
+  setTimeout(()=>document.getElementById('status').textContent='',5000);
+  updHC();
+}
+
+function drawMarks(results){
+  clearMarks();
+  // Fixed pixel radius for live map circles
+  const R=16;
+  results.forEach(pt=>{
+    const label=pt.rank>=20?'20+':String(pt.rank);
+    const fs=label.length>2?9:11;
+    const m=new google.maps.Marker({
+      position:{lat:pt.lat,lng:pt.lng},map,
+      icon:{path:google.maps.SymbolPath.CIRCLE,scale:R,fillColor:rc(pt.rank),fillOpacity:0.95,strokeColor:'rgba(0,0,0,0.25)',strokeWeight:1.5},
+      label:{text:label,color:'#ffffff',fontSize:fs+'px',fontWeight:'700',fontFamily:'DM Sans,sans-serif'},
+      optimized:false
+    });
+    marks.push(m);
+  });
+}
+
+function getRank(pos,kw){
+  return new Promise(resolve=>{
+    if(!psvc||!biz||!biz.placeId){resolve(21);return;}
+    psvc.nearbySearch({location:new google.maps.LatLng(pos.lat,pos.lng),rankBy:google.maps.places.RankBy.DISTANCE,keyword:kw},(res,st)=>{
+      if(st===google.maps.places.PlacesServiceStatus.OK&&res){
+        const i=res.findIndex(r=>r.place_id===biz.placeId);
+        resolve(i>=0?i+1:21);
+      }else resolve(21);
+    });
+  });
+}
+function clearMarks(){marks.forEach(m=>m.setMap(null));marks=[];}
+function clearScan(){clearMarks();scan=null;if(biz)document.getElementById('bd').textContent=biz.address;}
+
+function exportPNG(){
+  if(!scan){alert('Run a scan first.');return;}
+  const pts=scan.points;
+  const gridSize=parseInt(scan.grid.split('x')[0]);
+  const spacingMiles=parseFloat(scan.spacing);
+
+  // Canvas dimensions - exactly like the reference app
+  const canvasW=900;
+  const headerH=110;
+  const footerH=28;
+  const mapH=canvasW; // square map
+  const canvasH=headerH+mapH+footerH;
+  const cellSize=canvasW/gridSize; // e.g. 900/9=100px per cell
+  const circleR=Math.floor(cellSize*0.38); // 38% of cell = nearly touching with small gap
+
+  // Build sorted grid
+  const grid=[];
+  const cols=gridSize, rows=gridSize;
+  const hc=Math.floor(cols/2), hr=Math.floor(rows/2);
+  for(let r=0;r<rows;r++){
+    for(let c=0;c<cols;c++){
+      // Find point at this grid position
+      // Points are ordered row by row, top to bottom
+      const idx=r*cols+c;
+      grid.push(pts[idx]||{rank:21,lat:0,lng:0});
+    }
+  }
+
+  // Get center for static map
+  const lats=pts.map(p=>p.lat).filter(v=>!isNaN(v));
+  const lngs=pts.map(p=>p.lng).filter(v=>!isNaN(v));
+  const cLat=lats.reduce((a,b)=>a+b,0)/lats.length;
+  const cLng=lngs.reduce((a,b)=>a+b,0)/lngs.length;
+
+  // Calculate zoom to fit grid in static map
+  function calcZoom(spacingMi,gs,lat){
+    const spanMeters=(gs-1)*spacingMi*1609.34;
+    const pixelSpan=canvasW*0.80;
+    const mpp=spanMeters/pixelSpan;
+    const z=Math.log2(156543.03392*Math.cos(lat*Math.PI/180)/mpp);
+    return Math.max(1,Math.min(20,Math.floor(z)));
+  }
+  const mapZoom=calcZoom(spacingMiles,gridSize,cLat);
+
+  const canvas=document.createElement('canvas');
+  canvas.width=canvasW; canvas.height=canvasH;
+  const ctx=canvas.getContext('2d');
+
+  // White background
+  ctx.fillStyle='#ffffff';
+  ctx.fillRect(0,0,canvasW,canvasH);
+
+  // --- HEADER ---
+  ctx.fillStyle='#0f172a';
+  ctx.font='bold 22px Arial';
+  ctx.fillText(scan.biz.name,16,36);
+
+  ctx.fillStyle='#1e40af';
+  ctx.font='bold 14px Arial';
+  ctx.fillText('Search Term: '+scan.kw,16,56);
+
+  const agr=parseFloat(scan.agr);
+  ctx.fillStyle='#0f172a';
+  ctx.font='bold 13px Arial';
+  ctx.fillText('AGR: '+agr.toFixed(1)+'   Grid: '+scan.grid+'   Spacing: '+scan.spacing+'mi',16,74);
+
+  ctx.fillStyle='#64748b';
+  ctx.font='12px Arial';
+  ctx.fillText(scan.biz.address,16,90);
+
+  // Date top-right
+  const dateStr=new Date(scan.date).toLocaleDateString('en-US',{month:'short',day:'2-digit',year:'numeric'});
+  ctx.fillStyle='#64748b';
+  ctx.font='13px Arial';
+  ctx.textAlign='right';
+  ctx.fillText(dateStr,canvasW-16,36);
+  ctx.textAlign='left';
+
+  // Separator
+  ctx.strokeStyle='#e2e8f0'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(0,headerH); ctx.lineTo(canvasW,headerH); ctx.stroke();
+
+  // --- LOAD STATIC MAP THEN DRAW CIRCLES ---
+  const styles=[
+    'feature:all|element:geometry|color:0xf5f3ee',
+    'feature:road|element:geometry|color:0xffffff',
+    'feature:road|element:geometry.stroke|color:0xd8d4cc',
+    'feature:road.highway|element:geometry|color:0xf5c518',
+    'feature:road.highway|element:geometry.stroke|color:0xe0a800',
+    'feature:water|element:geometry|color:0xaed6e8',
+    'feature:poi.park|element:geometry|color:0xd4ecc4',
+    'feature:poi|visibility:off',
+    'feature:transit|visibility:off',
+  ].map(s=>'style='+encodeURIComponent(s)).join('&');
+
+  const mapUrl=`https://maps.googleapis.com/maps/api/staticmap?center=${cLat},${cLng}&zoom=${mapZoom}&size=${canvasW}x${mapH}&scale=1&${styles}&key=${KEY}`;
+
+  const img=new Image();
+  img.crossOrigin='anonymous';
+
+  function drawCircles(){
+    // Draw circles using gridRow/gridCol positioning (not lat/lng conversion)
+    // This matches the reference app approach exactly
+    grid.forEach((pt,idx)=>{
+      const col=idx%gridSize;
+      const row=Math.floor(idx/gridSize);
+      const cx=(col+0.5)*cellSize;
+      const cy=headerH+(row+0.5)*cellSize;
+      const color=rc(pt.rank>=20?21:pt.rank);
+      const label=pt.rank>=20?'20+':String(pt.rank);
+
+      // Shadow
+      ctx.beginPath();
+      ctx.arc(cx,cy,circleR+1.5,0,Math.PI*2);
+      ctx.fillStyle='rgba(0,0,0,0.15)';
+      ctx.fill();
+
+      // Circle
+      ctx.beginPath();
+      ctx.arc(cx,cy,circleR,0,Math.PI*2);
+      ctx.fillStyle=color;
+      ctx.fill();
+      ctx.strokeStyle='rgba(255,255,255,0.5)';
+      ctx.lineWidth=1.5;
+      ctx.stroke();
+
+      // Number - white bold with dark outline
+      const fs=label.length>2?Math.floor(circleR*0.62):Math.floor(circleR*0.78);
+      ctx.font=`900 ${fs}px Arial`;
+      ctx.textAlign='center';
+      ctx.textBaseline='middle';
+      ctx.strokeStyle='rgba(0,0,0,0.5)';
+      ctx.lineWidth=2.5;
+      ctx.lineJoin='round';
+      ctx.strokeText(label,cx,cy);
+      ctx.fillStyle='#ffffff';
+      ctx.fillText(label,cx,cy);
+    });
+
+    // Footer
+    ctx.fillStyle='#f8fafc';
+    ctx.fillRect(0,headerH+mapH,canvasW,footerH);
+    ctx.strokeStyle='#e2e8f0'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(0,headerH+mapH); ctx.lineTo(canvasW,headerH+mapH); ctx.stroke();
+    ctx.fillStyle='#94a3b8';
+    ctx.font='10px Arial';
+    ctx.textAlign='right';
+    ctx.fillText('GBP Heatmap Scanner',canvasW-10,headerH+mapH+18);
+    ctx.textAlign='left';
+
+    canvas.toBlob(blob=>window.open(URL.createObjectURL(blob),'_blank'),'image/png');
+  }
+
+  img.onload=function(){
+    ctx.drawImage(img,0,headerH,canvasW,mapH);
+    drawCircles();
+  };
+  img.onerror=function(){
+    // Gray fallback background
+    ctx.fillStyle='#e8edf2';
+    ctx.fillRect(0,headerH,canvasW,mapH);
+    drawCircles();
+  };
+  img.src=mapUrl;
+}
+
+function saveHist(s){
+  hist.unshift(s);if(hist.length>100)hist=hist.slice(0,100);
+  try{localStorage.setItem('gbp_history',JSON.stringify(hist));}catch(e){}
+}
+function delHist(id){
+  hist=hist.filter(h=>h.id!==id);
+  try{localStorage.setItem('gbp_history',JSON.stringify(hist));}catch(e){}
+  renderHist();updHC();
+}
+function updHC(){document.getElementById('hc').textContent=hist.length?`(${hist.length})`:''; }
+function renderHist(){
+  const el=document.getElementById('hist-list'),em=document.getElementById('he');
+  if(!hist.length){el.innerHTML='';em.style.display='block';return;}
+  em.style.display='none';
+  el.innerHTML=hist.map(h=>`<div class="hi">
+    <div class="hi-name">${h.biz.name}</div>
+    <div class="hi-kw">${h.kw}</div>
+    <div class="hi-meta">${h.grid} · ${h.spacing}mi · AGR ${h.agr} · ${new Date(h.date).toLocaleDateString()}</div>
+    <div class="hi-acts">
+      <button class="hbtn" onclick="loadScan(${h.id})">Load</button>
+      <button class="hbtn" onclick="pngH(${h.id})">PNG ↗</button>
+      <button class="hbtn del" onclick="delHist(${h.id})">Delete</button>
+    </div>
+  </div>`).join('');
+}
+function loadScan(id){
+  const h=hist.find(x=>x.id===id);
+  if(!h||!map)return;
+  clearMarks();biz=h.biz;scan=h;
+  setBiz(h.biz);
+  document.getElementById('kw').value=h.kw;
+  document.getElementById('bd').textContent=`${h.biz.address}  ·  "${h.kw}"  ·  AGR: ${h.agr}`;
+  const bounds=new google.maps.LatLngBounds();
+  h.points.forEach(p=>bounds.extend(new google.maps.LatLng(p.lat,p.lng)));
+  map.fitBounds(bounds,100);
+  google.maps.event.addListenerOnce(map,'idle',()=>drawMarks(h.points));
+  switchTab('scan');
+}
+function pngH(id){const h=hist.find(x=>x.id===id);if(!h)return;const p=scan;scan=h;exportPNG();scan=p;}
+</script>
+<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyB17iRe_iJo30AO0Yj11x0iwVTtcgurv_k&libraries=places&callback=initMap&loading=async" defer></script>
+</body>
+</html>
