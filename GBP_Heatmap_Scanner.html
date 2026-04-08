@@ -236,28 +236,29 @@ window.initMap=function(){
 function forceSearch(){
   const v=document.getElementById('biz-ac').value.trim();
   if(!v){alert('Enter a business name first.');return;}
-  if(!psvc){alert('Map not ready yet. Wait a moment and try again.');return;}
+  if(!psvc){alert('Map not loaded yet, please wait a moment.');return;}
   const drop=document.getElementById('ac-drop');
   drop.innerHTML='<div class="acp"><div class="acp-main" style="color:#7a7f96">Searching...</div></div>';
   drop.style.display='block';
   psvc.textSearch({query:v},(res,st)=>{
     if(st===google.maps.places.PlacesServiceStatus.OK&&res&&res.length){
-      const textResults=res;
-      drop.innerHTML=res.slice(0,8).map((r,i)=>`<div class="acp" data-t="tr" data-i="${i}"><div class="acp-main">${r.name}</div><div class="acp-sub">${r.formatted_address||''}</div></div>`).join('');
+      const results=res;
+      drop.innerHTML=results.slice(0,8).map((r,i)=>`<div class="acp" data-i="${i}"><div class="acp-main">${r.name}</div><div class="acp-sub">${r.formatted_address||''}</div></div>`).join('');
       drop.querySelectorAll('.acp').forEach(el=>{
         el.addEventListener('mousedown',e=>{
           e.preventDefault();
-          const r=textResults[+el.dataset.i];
+          const r=results[+el.dataset.i];
           document.getElementById('biz-ac').value=r.name;
           drop.style.display='none';
           setBiz({name:r.name,address:r.formatted_address,lat:r.geometry.location.lat(),lng:r.geometry.location.lng(),placeId:r.place_id});
         });
       });
     } else {
-      drop.innerHTML='<div class="acp"><div class="acp-main" style="color:#7a7f96">No results found. Try adding state abbreviation.</div></div>';
+      drop.innerHTML='<div class="acp"><div class="acp-main" style="color:#e24b4a">No results. Try: Business Name City State</div></div>';
     }
   });
 }
+
 function setupAC(){
   const input=document.getElementById('biz-ac');
   const drop=document.getElementById('ac-drop');
@@ -449,42 +450,86 @@ function clearScan(){clearMarks();scan=null;if(biz)document.getElementById('bd')
 function exportPNG(){
   if(!scan){alert('Run a scan first.');return;}
   const pts=scan.points;
-  let minLat=90,maxLat=-90,minLng=180,maxLng=-180;
-  pts.forEach(p=>{minLat=Math.min(minLat,p.lat);maxLat=Math.max(maxLat,p.lat);minLng=Math.min(minLng,p.lng);maxLng=Math.max(maxLng,p.lng);});
-  const cLat=(minLat+maxLat)/2,cLng=(minLng+maxLng)/2;
+  const gridSize=parseInt(scan.grid.split('x')[0]);
+  const spacingMiles=parseFloat(scan.spacing);
 
-  // Canvas dimensions
-  const SCALE=2;
-  const mapW=960,mapH=800,headerH=110;
-  const canW=mapW*SCALE,canH=(mapH+headerH)*SCALE;
+  // Canvas dimensions - exactly like the reference app
+  const canvasW=900;
+  const headerH=110;
+  const footerH=28;
+  const mapH=canvasW; // square map
+  const canvasH=headerH+mapH+footerH;
+  const cellSize=canvasW/gridSize; // e.g. 900/9=100px per cell
+  const circleR=Math.floor(cellSize*0.38); // 38% of cell = nearly touching with small gap
 
-  // Find best zoom: grid should occupy ~60% of map width/height
-  let bz=4;
-  for(let z=14;z>=2;z--){
-    const mpp=(156543.03392*Math.cos(cLat*Math.PI/180))/Math.pow(2,z);
-    const latSpan=((maxLat-minLat)*111320)/mpp;
-    const lngSpan=((maxLng-minLng)*111320*Math.cos(cLat*Math.PI/180))/mpp;
-    if(latSpan<mapH*SCALE*0.58&&lngSpan<mapW*SCALE*0.58){bz=z;break;}
+  // Build sorted grid
+  const grid=[];
+  const cols=gridSize, rows=gridSize;
+  const hc=Math.floor(cols/2), hr=Math.floor(rows/2);
+  for(let r=0;r<rows;r++){
+    for(let c=0;c<cols;c++){
+      // Find point at this grid position
+      // Points are ordered row by row, top to bottom
+      const idx=r*cols+c;
+      grid.push(pts[idx]||{rank:21,lat:0,lng:0});
+    }
   }
 
-  // Convert lat/lng to canvas pixel (accounting for header offset)
-  function toPixel(lat,lng){
-    const mpp=(156543.03392*Math.cos(cLat*Math.PI/180))/Math.pow(2,bz);
-    const cx=canW/2,cy=mapH*SCALE/2;
-    const x=cx+(lng-cLng)*111320*Math.cos(cLat*Math.PI/180)/mpp;
-    const y=cy-(lat-cLat)*111320/mpp;
-    return{x,y:y+headerH*SCALE};
+  // Get center for static map
+  const lats=pts.map(p=>p.lat).filter(v=>!isNaN(v));
+  const lngs=pts.map(p=>p.lng).filter(v=>!isNaN(v));
+  const cLat=lats.reduce((a,b)=>a+b,0)/lats.length;
+  const cLng=lngs.reduce((a,b)=>a+b,0)/lngs.length;
+
+  // Calculate zoom to fit grid in static map
+  function calcZoom(spacingMi,gs,lat){
+    const spanMeters=(gs-1)*spacingMi*1609.34;
+    const pixelSpan=canvasW*0.80;
+    const mpp=spanMeters/pixelSpan;
+    const z=Math.log2(156543.03392*Math.cos(lat*Math.PI/180)/mpp);
+    return Math.max(1,Math.min(20,Math.floor(z)));
   }
+  const mapZoom=calcZoom(spacingMiles,gridSize,cLat);
 
-  // Calculate circle radius based on actual pixel spacing between adjacent dots
-  // so they never overlap regardless of grid/spacing combo
-  const mpp=(156543.03392*Math.cos(cLat*Math.PI/180))/Math.pow(2,bz);
-  // Calculate actual pixel distance between adjacent circles at this zoom
-  const spacingPx=(parseFloat(scan.spacing)*1609.34)/mpp;
-  // Circles always 85% of spacing diameter = 42.5% radius
-  // This makes them nearly touching with tiny gaps like the reference image
-  const CR=spacingPx*0.425;
+  const canvas=document.createElement('canvas');
+  canvas.width=canvasW; canvas.height=canvasH;
+  const ctx=canvas.getContext('2d');
 
+  // White background
+  ctx.fillStyle='#ffffff';
+  ctx.fillRect(0,0,canvasW,canvasH);
+
+  // --- HEADER ---
+  ctx.fillStyle='#0f172a';
+  ctx.font='bold 22px Arial';
+  ctx.fillText(scan.biz.name,16,36);
+
+  ctx.fillStyle='#1e40af';
+  ctx.font='bold 14px Arial';
+  ctx.fillText('Search Term: '+scan.kw,16,56);
+
+  const agr=parseFloat(scan.agr);
+  ctx.fillStyle='#0f172a';
+  ctx.font='bold 13px Arial';
+  ctx.fillText('AGR: '+agr.toFixed(1)+'   Grid: '+scan.grid+'   Spacing: '+scan.spacing+'mi',16,74);
+
+  ctx.fillStyle='#64748b';
+  ctx.font='12px Arial';
+  ctx.fillText(scan.biz.address,16,90);
+
+  // Date top-right
+  const dateStr=new Date(scan.date).toLocaleDateString('en-US',{month:'short',day:'2-digit',year:'numeric'});
+  ctx.fillStyle='#64748b';
+  ctx.font='13px Arial';
+  ctx.textAlign='right';
+  ctx.fillText(dateStr,canvasW-16,36);
+  ctx.textAlign='left';
+
+  // Separator
+  ctx.strokeStyle='#e2e8f0'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(0,headerH); ctx.lineTo(canvasW,headerH); ctx.stroke();
+
+  // --- LOAD STATIC MAP THEN DRAW CIRCLES ---
   const styles=[
     'feature:all|element:geometry|color:0xf5f3ee',
     'feature:road|element:geometry|color:0xffffff',
@@ -497,81 +542,74 @@ function exportPNG(){
     'feature:transit|visibility:off',
   ].map(s=>'style='+encodeURIComponent(s)).join('&');
 
-  const mapUrl=`https://maps.googleapis.com/maps/api/staticmap?center=${cLat},${cLng}&zoom=${bz}&size=${mapW}x${mapH}&scale=${SCALE}&${styles}&key=${KEY}`;
+  const mapUrl=`https://maps.googleapis.com/maps/api/staticmap?center=${cLat},${cLng}&zoom=${mapZoom}&size=${canvasW}x${mapH}&scale=1&${styles}&key=${KEY}`;
 
   const img=new Image();
   img.crossOrigin='anonymous';
-  img.onload=function(){
-    const canvas=document.createElement('canvas');
-    canvas.width=canW;canvas.height=canH;
-    const ctx=canvas.getContext('2d');
 
-    // --- Header ---
-    ctx.fillStyle='#ffffff';
-    ctx.fillRect(0,0,canW,headerH*SCALE);
-    ctx.fillStyle='#e0e0e0';
-    ctx.fillRect(0,headerH*SCALE-2,canW,2);
-
-    const date=new Date(scan.date).toLocaleDateString('en-US',{month:'short',day:'2-digit',year:'numeric'});
-    // Business name - left
-    ctx.fillStyle='#111111';
-    ctx.font=`bold 40px Arial`;
-    ctx.textAlign='left';
-    ctx.fillText(scan.biz.name,48,58);
-    // Date - right
-    ctx.font=`32px Arial`;
-    ctx.fillStyle='#555555';
-    ctx.textAlign='right';
-    ctx.fillText(date,canW-48,58);
-    // Stats line
-    ctx.textAlign='left';
-    ctx.font=`26px Arial`;
-    ctx.fillStyle='#333333';
-    ctx.fillText(`Search Term: ${scan.kw}`,48,96);
-    ctx.fillText(`AGR: ${scan.agr}   Grid: ${scan.grid}   Spacing: ${scan.spacing}mi`,48,130);
-
-    // --- Map ---
-    ctx.drawImage(img,0,headerH*SCALE,canW,mapH*SCALE);
-
-    // --- Circles with numbers ---
-    pts.forEach(p=>{
-      const{x,y}=toPixel(p.lat,p.lng);
-      const label=p.rank>=20?'20+':String(p.rank);
-      const color=rc(p.rank);
+  function drawCircles(){
+    // Draw circles using gridRow/gridCol positioning (not lat/lng conversion)
+    // This matches the reference app approach exactly
+    grid.forEach((pt,idx)=>{
+      const col=idx%gridSize;
+      const row=Math.floor(idx/gridSize);
+      const cx=(col+0.5)*cellSize;
+      const cy=headerH+(row+0.5)*cellSize;
+      const color=rc(pt.rank>=20?21:pt.rank);
+      const label=pt.rank>=20?'20+':String(pt.rank);
 
       // Shadow
       ctx.beginPath();
-      ctx.arc(x,y,CR+SCALE,0,Math.PI*2);
+      ctx.arc(cx,cy,circleR+1.5,0,Math.PI*2);
       ctx.fillStyle='rgba(0,0,0,0.15)';
       ctx.fill();
 
       // Circle
       ctx.beginPath();
-      ctx.arc(x,y,CR,0,Math.PI*2);
+      ctx.arc(cx,cy,circleR,0,Math.PI*2);
       ctx.fillStyle=color;
       ctx.fill();
-      ctx.strokeStyle='rgba(0,0,0,0.25)';
-      ctx.lineWidth=SCALE;
+      ctx.strokeStyle='rgba(255,255,255,0.5)';
+      ctx.lineWidth=1.5;
       ctx.stroke();
 
-      // Number - white with black outline for readability on any color
-      const fs=label.length>2?CR*0.62:CR*0.78;
-      ctx.font=`900 ${Math.round(fs)}px Arial`;
+      // Number - white bold with dark outline
+      const fs=label.length>2?Math.floor(circleR*0.62):Math.floor(circleR*0.78);
+      ctx.font=`900 ${fs}px Arial`;
       ctx.textAlign='center';
       ctx.textBaseline='middle';
-      // Black outline
-      ctx.strokeStyle='rgba(0,0,0,0.7)';
-      ctx.lineWidth=SCALE*2.5;
+      ctx.strokeStyle='rgba(0,0,0,0.5)';
+      ctx.lineWidth=2.5;
       ctx.lineJoin='round';
-      ctx.strokeText(label,x,y);
-      // White fill
+      ctx.strokeText(label,cx,cy);
       ctx.fillStyle='#ffffff';
-      ctx.fillText(label,x,y);
+      ctx.fillText(label,cx,cy);
     });
 
+    // Footer
+    ctx.fillStyle='#f8fafc';
+    ctx.fillRect(0,headerH+mapH,canvasW,footerH);
+    ctx.strokeStyle='#e2e8f0'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(0,headerH+mapH); ctx.lineTo(canvasW,headerH+mapH); ctx.stroke();
+    ctx.fillStyle='#94a3b8';
+    ctx.font='10px Arial';
+    ctx.textAlign='right';
+    ctx.fillText('GBP Heatmap Scanner',canvasW-10,headerH+mapH+18);
+    ctx.textAlign='left';
+
     canvas.toBlob(blob=>window.open(URL.createObjectURL(blob),'_blank'),'image/png');
+  }
+
+  img.onload=function(){
+    ctx.drawImage(img,0,headerH,canvasW,mapH);
+    drawCircles();
   };
-  img.onerror=()=>alert('Map image failed to load. Check Static Maps API is enabled on your key.');
+  img.onerror=function(){
+    // Gray fallback background
+    ctx.fillStyle='#e8edf2';
+    ctx.fillRect(0,headerH,canvasW,mapH);
+    drawCircles();
+  };
   img.src=mapUrl;
 }
 
