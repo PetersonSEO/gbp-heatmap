@@ -236,6 +236,7 @@ window.initMap=function(){
 function forceSearch(){
   const v=document.getElementById('biz-ac').value.trim();
   if(!v){alert('Enter a business name first.');return;}
+  if(!psvc){alert('Map not ready yet. Wait a moment and try again.');return;}
   const drop=document.getElementById('ac-drop');
   drop.innerHTML='<div class="acp"><div class="acp-main" style="color:#7a7f96">Searching...</div></div>';
   drop.style.display='block';
@@ -463,7 +464,7 @@ function exportPNG(){
     const mpp=(156543.03392*Math.cos(cLat*Math.PI/180))/Math.pow(2,z);
     const latSpan=((maxLat-minLat)*111320)/mpp;
     const lngSpan=((maxLng-minLng)*111320*Math.cos(cLat*Math.PI/180))/mpp;
-    if(latSpan<mapH*SCALE*0.52&&lngSpan<mapW*SCALE*0.52){bz=z;break;}
+    if(latSpan<mapH*SCALE*0.58&&lngSpan<mapW*SCALE*0.58){bz=z;break;}
   }
 
   // Convert lat/lng to canvas pixel (accounting for header offset)
@@ -478,13 +479,11 @@ function exportPNG(){
   // Calculate circle radius based on actual pixel spacing between adjacent dots
   // so they never overlap regardless of grid/spacing combo
   const mpp=(156543.03392*Math.cos(cLat*Math.PI/180))/Math.pow(2,bz);
+  // Calculate actual pixel distance between adjacent circles at this zoom
   const spacingPx=(parseFloat(scan.spacing)*1609.34)/mpp;
-  // Circle diameter should be ~60% of spacing (30% radius)
-  // Also cap at mapW/(cols*2.5) so circles never get huge on close zooms
-  const [cols2]=scan.grid.split('x').map(Number);
-  const maxByGrid=(mapW*SCALE)/(cols2*2.8);
-  const bySpacing=spacingPx*0.30;
-  const CR=Math.max(10,Math.min(maxByGrid,bySpacing));
+  // Circles always 85% of spacing diameter = 42.5% radius
+  // This makes them nearly touching with tiny gaps like the reference image
+  const CR=spacingPx*0.425;
 
   const styles=[
     'feature:all|element:geometry|color:0xf5f3ee',
