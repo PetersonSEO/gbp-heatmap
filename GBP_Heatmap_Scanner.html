@@ -275,11 +275,8 @@ function setupAC(){
     if(e.key==='Enter'){
       e.preventDefault();
       clearTimeout(timer);
-      const v=this.value.trim();
-      if(!v)return;
-      if(preds.length) selectPred(preds[0]);
-      else if(textResults.length) selectTextResult(textResults[0]);
-      else doTextSearch(v);
+      drop.style.display='none';
+      forceSearch();
     }
     if(e.key==='Escape')drop.style.display='none';
   });
@@ -418,15 +415,21 @@ async function runScan(){
 
 function drawMarks(results){
   clearMarks();
-  // Fixed pixel radius for live map circles
-  const R=16;
+  if(!results.length)return;
+  const zoom=map.getZoom();
+  const midLat=results[Math.floor(results.length/2)].lat;
+  const mppAtZoom=(156543.03392*Math.cos(midLat*Math.PI/180))/Math.pow(2,zoom);
+  const spacingPx=(parseFloat(scan.spacing)*1609.34)/mppAtZoom;
+  // 42% of spacing = circles nearly touching with visible gap
+  const R=Math.max(10,Math.min(40,spacingPx*0.42));
+
   results.forEach(pt=>{
     const label=pt.rank>=20?'20+':String(pt.rank);
-    const fs=label.length>2?9:11;
+    const fs=label.length>2?Math.max(8,Math.floor(R*0.48)):Math.max(9,Math.floor(R*0.60));
     const m=new google.maps.Marker({
       position:{lat:pt.lat,lng:pt.lng},map,
-      icon:{path:google.maps.SymbolPath.CIRCLE,scale:R,fillColor:rc(pt.rank),fillOpacity:0.95,strokeColor:'rgba(0,0,0,0.25)',strokeWeight:1.5},
-      label:{text:label,color:'#ffffff',fontSize:fs+'px',fontWeight:'700',fontFamily:'DM Sans,sans-serif'},
+      icon:{path:google.maps.SymbolPath.CIRCLE,scale:R,fillColor:rc(pt.rank),fillOpacity:0.95,strokeColor:'rgba(0,0,0,0.2)',strokeWeight:1.5},
+      label:{text:label,color:'#ffffff',fontSize:Math.round(fs)+'px',fontWeight:'700',fontFamily:'DM Sans,sans-serif'},
       optimized:false
     });
     marks.push(m);
@@ -453,43 +456,46 @@ function exportPNG(){
   const gridSize=parseInt(scan.grid.split('x')[0]);
   const spacingMiles=parseFloat(scan.spacing);
 
-  // Canvas dimensions - exactly like the reference app
-  const canvasW=900;
-  const headerH=110;
-  const footerH=28;
-  const mapH=canvasW; // square map
-  const canvasH=headerH+mapH+footerH;
-  const cellSize=canvasW/gridSize; // e.g. 900/9=100px per cell
-  const circleR=Math.floor(cellSize*0.38); // 38% of cell = nearly touching with small gap
+  const canvasW=1000;
+  const headerH=100;
+  const mapW=canvasW;
+  const mapH=800;
+  const canvasH=headerH+mapH;
 
-  // Build sorted grid
-  const grid=[];
-  const cols=gridSize, rows=gridSize;
-  const hc=Math.floor(cols/2), hr=Math.floor(rows/2);
-  for(let r=0;r<rows;r++){
-    for(let c=0;c<cols;c++){
-      // Find point at this grid position
-      // Points are ordered row by row, top to bottom
-      const idx=r*cols+c;
-      grid.push(pts[idx]||{rank:21,lat:0,lng:0});
+  // Get bounds of all grid points
+  const lats=pts.map(p=>p.lat);
+  const lngs=pts.map(p=>p.lng);
+  const minLat=Math.min(...lats), maxLat=Math.max(...lats);
+  const minLng=Math.min(...lngs), maxLng=Math.max(...lngs);
+  const cLat=(minLat+maxLat)/2, cLng=(minLng+maxLng)/2;
+
+  // Find zoom that fits grid in map with ~20% padding each side
+  // Same logic as live map fitBounds with 100px padding
+  function getBestZoom(minLat,maxLat,minLng,maxLng,imgW,imgH){
+    for(let z=14;z>=1;z--){
+      const mpp=(156543.03392*Math.cos(cLat*Math.PI/180))/Math.pow(2,z);
+      const latPx=((maxLat-minLat)*111320)/mpp;
+      const lngPx=((maxLng-minLng)*111320*Math.cos(cLat*Math.PI/180))/mpp;
+      // Grid should fit in 65% of image (17.5% margin each side)
+      if(latPx<imgH*0.65&&lngPx<imgW*0.65){return z;}
     }
+    return 4;
+  }
+  const mapZoom=getBestZoom(minLat,maxLat,minLng,maxLng,mapW,mapH);
+
+  // Convert lat/lng to pixel on the map image (same math as live map)
+  function toPixel(lat,lng){
+    const mpp=(156543.03392*Math.cos(cLat*Math.PI/180))/Math.pow(2,mapZoom);
+    const x=mapW/2+(lng-cLng)*111320*Math.cos(cLat*Math.PI/180)/mpp;
+    const y=mapH/2-(lat-cLat)*111320/mpp;
+    return{x,y};
   }
 
-  // Get center for static map
-  const lats=pts.map(p=>p.lat).filter(v=>!isNaN(v));
-  const lngs=pts.map(p=>p.lng).filter(v=>!isNaN(v));
-  const cLat=lats.reduce((a,b)=>a+b,0)/lats.length;
-  const cLng=lngs.reduce((a,b)=>a+b,0)/lngs.length;
-
-  // Calculate zoom to fit grid in static map
-  function calcZoom(spacingMi,gs,lat){
-    const spanMeters=(gs-1)*spacingMi*1609.34;
-    const pixelSpan=canvasW*0.80;
-    const mpp=spanMeters/pixelSpan;
-    const z=Math.log2(156543.03392*Math.cos(lat*Math.PI/180)/mpp);
-    return Math.max(1,Math.min(20,Math.floor(z)));
-  }
-  const mapZoom=calcZoom(spacingMiles,gridSize,cLat);
+  // Circle radius: spacing in pixels * 42% so circles nearly touch with small gap
+  // This matches what live map shows
+  const mppAtZoom=(156543.03392*Math.cos(cLat*Math.PI/180))/Math.pow(2,mapZoom);
+  const spacingPx=(spacingMiles*1609.34)/mppAtZoom;
+  const circleR=Math.max(12,spacingPx*0.42);
 
   const canvas=document.createElement('canvas');
   canvas.width=canvasW; canvas.height=canvasH;
@@ -501,35 +507,28 @@ function exportPNG(){
 
   // --- HEADER ---
   ctx.fillStyle='#0f172a';
-  ctx.font='bold 22px Arial';
-  ctx.fillText(scan.biz.name,16,36);
+  ctx.font='bold 24px Arial';
+  ctx.fillText(scan.biz.name,20,34);
 
-  ctx.fillStyle='#1e40af';
-  ctx.font='bold 14px Arial';
-  ctx.fillText('Search Term: '+scan.kw,16,56);
-
-  const agr=parseFloat(scan.agr);
-  ctx.fillStyle='#0f172a';
-  ctx.font='bold 13px Arial';
-  ctx.fillText('AGR: '+agr.toFixed(1)+'   Grid: '+scan.grid+'   Spacing: '+scan.spacing+'mi',16,74);
-
-  ctx.fillStyle='#64748b';
-  ctx.font='12px Arial';
-  ctx.fillText(scan.biz.address,16,90);
-
-  // Date top-right
   const dateStr=new Date(scan.date).toLocaleDateString('en-US',{month:'short',day:'2-digit',year:'numeric'});
   ctx.fillStyle='#64748b';
   ctx.font='13px Arial';
   ctx.textAlign='right';
-  ctx.fillText(dateStr,canvasW-16,36);
+  ctx.fillText(dateStr,canvasW-20,34);
   ctx.textAlign='left';
 
-  // Separator
-  ctx.strokeStyle='#e2e8f0'; ctx.lineWidth=1;
-  ctx.beginPath(); ctx.moveTo(0,headerH); ctx.lineTo(canvasW,headerH); ctx.stroke();
+  ctx.fillStyle='#1e40af';
+  ctx.font='bold 14px Arial';
+  ctx.fillText('Search Term: '+scan.kw,20,56);
 
-  // --- LOAD STATIC MAP THEN DRAW CIRCLES ---
+  ctx.fillStyle='#0f172a';
+  ctx.font='13px Arial';
+  ctx.fillText('AGR: '+parseFloat(scan.agr).toFixed(1)+'   Grid: '+scan.grid+'   Spacing: '+scan.spacing+'mi',20,76);
+
+  ctx.fillStyle='#e2e8f0';
+  ctx.fillRect(0,headerH-1,canvasW,1);
+
+  // --- STATIC MAP ---
   const styles=[
     'feature:all|element:geometry|color:0xf5f3ee',
     'feature:road|element:geometry|color:0xffffff',
@@ -542,73 +541,59 @@ function exportPNG(){
     'feature:transit|visibility:off',
   ].map(s=>'style='+encodeURIComponent(s)).join('&');
 
-  const mapUrl=`https://maps.googleapis.com/maps/api/staticmap?center=${cLat},${cLng}&zoom=${mapZoom}&size=${canvasW}x${mapH}&scale=1&${styles}&key=${KEY}`;
+  const mapUrl=`https://maps.googleapis.com/maps/api/staticmap?center=${cLat},${cLng}&zoom=${mapZoom}&size=${mapW}x${mapH}&scale=1&${styles}&key=${KEY}`;
 
-  const img=new Image();
-  img.crossOrigin='anonymous';
-
-  function drawCircles(){
-    // Draw circles using gridRow/gridCol positioning (not lat/lng conversion)
-    // This matches the reference app approach exactly
-    grid.forEach((pt,idx)=>{
-      const col=idx%gridSize;
-      const row=Math.floor(idx/gridSize);
-      const cx=(col+0.5)*cellSize;
-      const cy=headerH+(row+0.5)*cellSize;
-      const color=rc(pt.rank>=20?21:pt.rank);
+  function drawAll(){
+    // Draw circles at correct lat/lng pixel positions
+    pts.forEach(pt=>{
+      const{x,y}=toPixel(pt.lat,pt.lng);
+      const py=y+headerH;
+      const color=rc(pt.rank);
       const label=pt.rank>=20?'20+':String(pt.rank);
 
       // Shadow
       ctx.beginPath();
-      ctx.arc(cx,cy,circleR+1.5,0,Math.PI*2);
-      ctx.fillStyle='rgba(0,0,0,0.15)';
+      ctx.arc(x,py,circleR+1.5,0,Math.PI*2);
+      ctx.fillStyle='rgba(0,0,0,0.12)';
       ctx.fill();
 
       // Circle
       ctx.beginPath();
-      ctx.arc(cx,cy,circleR,0,Math.PI*2);
+      ctx.arc(x,py,circleR,0,Math.PI*2);
       ctx.fillStyle=color;
       ctx.fill();
-      ctx.strokeStyle='rgba(255,255,255,0.5)';
+      ctx.strokeStyle='rgba(255,255,255,0.6)';
       ctx.lineWidth=1.5;
       ctx.stroke();
 
-      // Number - white bold with dark outline
-      const fs=label.length>2?Math.floor(circleR*0.62):Math.floor(circleR*0.78);
+      // White bold number with black outline
+      const fs=label.length>2?Math.max(10,Math.floor(circleR*0.58)):Math.max(12,Math.floor(circleR*0.72));
       ctx.font=`900 ${fs}px Arial`;
       ctx.textAlign='center';
       ctx.textBaseline='middle';
-      ctx.strokeStyle='rgba(0,0,0,0.5)';
+      ctx.strokeStyle='rgba(0,0,0,0.55)';
       ctx.lineWidth=2.5;
       ctx.lineJoin='round';
-      ctx.strokeText(label,cx,cy);
+      ctx.strokeText(label,x,py);
       ctx.fillStyle='#ffffff';
-      ctx.fillText(label,cx,cy);
+      ctx.fillText(label,x,py);
     });
 
-    // Footer
-    ctx.fillStyle='#f8fafc';
-    ctx.fillRect(0,headerH+mapH,canvasW,footerH);
-    ctx.strokeStyle='#e2e8f0'; ctx.lineWidth=1;
-    ctx.beginPath(); ctx.moveTo(0,headerH+mapH); ctx.lineTo(canvasW,headerH+mapH); ctx.stroke();
-    ctx.fillStyle='#94a3b8';
-    ctx.font='10px Arial';
-    ctx.textAlign='right';
-    ctx.fillText('GBP Heatmap Scanner',canvasW-10,headerH+mapH+18);
     ctx.textAlign='left';
-
+    ctx.textBaseline='alphabetic';
     canvas.toBlob(blob=>window.open(URL.createObjectURL(blob),'_blank'),'image/png');
   }
 
+  const img=new Image();
+  img.crossOrigin='anonymous';
   img.onload=function(){
-    ctx.drawImage(img,0,headerH,canvasW,mapH);
-    drawCircles();
+    ctx.drawImage(img,0,headerH,mapW,mapH);
+    drawAll();
   };
   img.onerror=function(){
-    // Gray fallback background
     ctx.fillStyle='#e8edf2';
-    ctx.fillRect(0,headerH,canvasW,mapH);
-    drawCircles();
+    ctx.fillRect(0,headerH,mapW,mapH);
+    drawAll();
   };
   img.src=mapUrl;
 }
