@@ -186,6 +186,13 @@ body{font-family:'DM Sans',sans-serif;background:#0f1117;color:#e8eaf0;height:10
       <div id="map"></div>
       <div id="ph"><p>Search for a business on the left<br>and run a scan to see rankings.</p></div>
       <div id="prog"><div id="pt">Scanning...</div><div id="pb-wrap"><div id="pb"></div></div></div>
+      <div id="debug-panel" style="display:none;position:absolute;bottom:10px;right:10px;width:380px;max-height:300px;overflow-y:auto;background:rgba(0,0,0,0.88);color:#7fff7f;font-family:monospace;font-size:11px;padding:10px;border-radius:8px;z-index:100;border:1px solid rgba(255,255,255,0.2);">
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+          <span style="color:#fff;font-weight:bold;">Debug Log</span>
+          <span onclick="document.getElementById('debug-panel').style.display='none'" style="cursor:pointer;color:#aaa;">✕</span>
+        </div>
+        <div id="debug-log"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -529,45 +536,22 @@ function getRank(pos,kw){
     if(!psvc||!biz){resolve(21);return;}
     const loc=new google.maps.LatLng(pos.lat,pos.lng);
     const bizName=biz.name.toLowerCase().trim();
-
-    // Use Places API New searchByText if available - finds SABs
-    if(google.maps.places.Place&&google.maps.places.Place.searchByText){
-      google.maps.places.Place.searchByText({
-        textQuery:kw,
-        locationBias:{circle:{center:{lat:pos.lat,lng:pos.lng},radius:1000}},
-        maxResultCount:20,
-        fields:['displayName','id','location']
-      }).then(({places})=>{
-        if(places&&places.length){
-          let i=-1;
-          if(biz.placeId) i=places.findIndex(p=>p.id===biz.placeId);
-          if(i<0) i=places.findIndex(p=>{
-            const pn=(p.displayName||'').toLowerCase().trim();
-            return pn===bizName||pn.includes(bizName)||bizName.includes(pn);
-          });
-          if(i>=0){resolve(i+1);return;}
-        }
-        // Fallback to nearbySearch
-        nearbyRank(loc,kw,bizName,resolve);
-      }).catch(()=>nearbyRank(loc,kw,bizName,resolve));
-    }else{
-      nearbyRank(loc,kw,bizName,resolve);
-    }
+    // Go straight to nearbyRank - debug panel will show results
+    nearbyRank(loc,kw,bizName,resolve);
   });
 }
 
 function nearbyRank(loc,kw,bizName,resolve){
   psvc.nearbySearch({location:loc,rankBy:google.maps.places.RankBy.DISTANCE,keyword:kw},(res,st)=>{
-    // Log first grid point results so we can see what's coming back
     if(!window._logged){
       window._logged=true;
-      console.log('=== FIRST GRID POINT DEBUG ===');
-      console.log('Keyword:',kw);
-      console.log('Business name looking for:',bizName);
-      console.log('Place ID looking for:',biz.placeId);
-      console.log('Status:',st);
-      console.log('Results count:',res?res.length:0);
-      if(res) res.slice(0,5).forEach((r,i)=>console.log(i+1,r.name,r.place_id,r.vicinity));
+      dbg('=== KEYWORD SEARCH ===');
+      dbg('KW: '+kw);
+      dbg('Looking for: '+bizName);
+      dbg('Place ID: '+(biz.placeId||'none'));
+      dbg('Status: '+st);
+      dbg('Results: '+(res?res.length:0));
+      if(res) res.slice(0,5).forEach((r,i)=>dbg((i+1)+'. '+r.name+' | '+r.place_id));
     }
     if(st===google.maps.places.PlacesServiceStatus.OK&&res){
       let i=-1;
@@ -581,9 +565,9 @@ function nearbyRank(loc,kw,bizName,resolve){
     psvc.nearbySearch({location:loc,rankBy:google.maps.places.RankBy.DISTANCE,keyword:bizName},(res2,st2)=>{
       if(!window._logged2){
         window._logged2=true;
-        console.log('=== NAME SEARCH RESULTS ===');
-        console.log('Status:',st2);
-        if(res2) res2.slice(0,5).forEach((r,i)=>console.log(i+1,r.name,r.place_id));
+        dbg('=== NAME SEARCH ===');
+        dbg('Status: '+st2);
+        if(res2) res2.slice(0,5).forEach((r,i)=>dbg((i+1)+'. '+r.name+' | '+r.place_id));
       }
       if(st2===google.maps.places.PlacesServiceStatus.OK&&res2){
         let j=-1;
