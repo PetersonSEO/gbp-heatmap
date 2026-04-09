@@ -288,39 +288,19 @@ window.initMap=function(){
 // ---- SEARCH ----
 function setupWidget(){
   const input=document.getElementById('biz-ac');
-  let widget=null;
-
-  function createWidget(){
-    // Destroy old widget if exists
-    if(widget) google.maps.event.clearInstanceListeners(widget);
-    
-    // Create new widget with current map bounds as strict bias
-    const bounds=map.getBounds();
-    const opts={fields:['geometry','name','formatted_address','place_id']};
-    if(bounds) opts.bounds=bounds;
-    
-    widget=new google.maps.places.Autocomplete(input,opts);
-    widget.addListener('place_changed',()=>{
-      const p=widget.getPlace();
-      if(!p||!p.geometry){
-        document.getElementById('ac-drop').innerHTML='<div class="acp"><div class="acp-main" style="color:#e24b4a">Please select from the dropdown list.</div></div>';
-        document.getElementById('ac-drop').style.display='block';
-        setTimeout(()=>document.getElementById('ac-drop').style.display='none',3000);
-        return;
-      }
-      document.getElementById('ac-drop').style.display='none';
-      setBiz({name:p.name,address:p.formatted_address||'Service Area Business',lat:p.geometry.location.lat(),lng:p.geometry.location.lng(),placeId:p.place_id});
-    });
-  }
-
-  // Create widget initially
-  createWidget();
-
-  // Recreate widget when map moves so bounds are always current
+  // Keep native autocomplete for businesses that DO show up
+  let widget=new google.maps.places.Autocomplete(input,{
+    fields:['geometry','name','formatted_address','place_id']
+  });
   map.addListener('idle',()=>{
-    const currentVal=input.value;
-    createWidget();
-    input.value=currentVal;
+    widget.setBounds(map.getBounds());
+  });
+  widget.addListener('place_changed',()=>{
+    const p=widget.getPlace();
+    if(!p||!p.geometry)return;
+    document.getElementById('ac-drop').style.display='none';
+    setBiz({name:p.name,address:p.formatted_address||'Service Area Business',
+      lat:p.geometry.location.lat(),lng:p.geometry.location.lng(),placeId:p.place_id});
   });
 }
 
@@ -374,81 +354,65 @@ function doSearch(){
   const v=document.getElementById('biz-ac').value.trim();
   if(!v){alert('Enter a business name first.');return;}
   const drop=document.getElementById('ac-drop');
-  drop.innerHTML='<div class="acp"><div class="acp-main" style="color:#7a7f96">Searching...</div></div>';
+  drop.innerHTML='<div class="acp"><div class="acp-main" style="color:#7a7f96">Searching Google Places...</div></div>';
   drop.style.display='block';
 
-  // Get current map center for bias
+  // Get map center for location context
   const center=map?map.getCenter():null;
-  const bias=center?new google.maps.Circle({center:{lat:center.lat(),lng:center.lng()},radius:150000}):null;
+  const lat=center?center.lat():null;
+  const lng=center?center.lng():null;
+  const locationHint=lat?`near coordinates ${lat.toFixed(4)},${lng.toFixed(4)}`:'';
 
-  // Try searchByText (Places API New) first - best for SABs
-  if(window.google&&google.maps.places.Place&&google.maps.places.Place.searchByText){
-    const searchReq={
-      textQuery:v,
-      fields:['displayName','formattedAddress','location','id'],
-      maxResultCount:8
-    };
-    // Add location bias based on map center
-    if(center){
-      searchReq.locationBias={
-        circle:{center:{lat:center.lat(),lng:center.lng()},radius:150000}
-      };
-    }
-    google.maps.places.Place.searchByText(searchReq)
-      .then(({places})=>{
-        if(places&&places.length) showNew(places);
-        else tryAutoComplete();
-      })
-      .catch(()=>tryAutoComplete());
-  } else {
-    tryAutoComplete();
-  }
+  // Use Anthropic API to proxy the Google Places Text Search
+  // This works server-side where textSearch is available
+  fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({
+      model:'claude-sonnet-4-20250514',
+      max_tokens:1000,
+      messages:[{
+        role:'user',
+        content:`Search Google Places for businesses matching "${v}" ${locationHint}. 
+Use the fetch API to call: https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(v)}&location=${lat},${lng}&radius=50000&key=${KEY}
 
-  function tryAutoComplete(){
-    const req={input:v};
-    if(bias) req.locationBias=bias;
-    acSvc.getPlacePredictions(req,(preds,st)=>{
-      if(st===google.maps.places.PlacesServiceStatus.OK&&preds&&preds.length){
-        showPreds(preds.slice(0,8));
-      } else {
-        drop.innerHTML='<div class="acp"><div class="acp-main" style="color:#e24b4a">Not found near map center. Pan map to the business city first, then search. Or use "Click on Map" — zoom to their city and click their business name.</div></div>';
-      }
-    });
-  }
-
-  function showNew(places){
-    drop.innerHTML=places.map((p,i)=>`<div class="acp" data-i="${i}">
-      <div class="acp-main">${p.displayName||'Unknown'}</div>
-      <div class="acp-sub">${p.formattedAddress||'Service Area Business'}</div>
-    </div>`).join('');
-    drop.querySelectorAll('.acp').forEach(el=>{
-      el.addEventListener('mousedown',e=>{
-        e.preventDefault();
-        const p=places[+el.dataset.i];
-        drop.style.display='none';
-        setBiz({name:p.displayName,address:p.formattedAddress||'Service Area Business',lat:p.location.lat(),lng:p.location.lng(),placeId:p.id});
-      });
-    });
-  }
-
-  function showPreds(preds){
-    drop.innerHTML=preds.map((p,i)=>`<div class="acp" data-i="${i}">
-      <div class="acp-main">${p.structured_formatting?p.structured_formatting.main_text:p.description}</div>
-      <div class="acp-sub">${p.structured_formatting?(p.structured_formatting.secondary_text||''):''}</div>
-    </div>`).join('');
-    drop.querySelectorAll('.acp').forEach(el=>{
-      el.addEventListener('mousedown',e=>{
-        e.preventDefault();
-        const pred=preds[+el.dataset.i];
-        document.getElementById('biz-ac').value=pred.description;
-        drop.style.display='none';
-        psvc.getDetails({placeId:pred.place_id,fields:['geometry','name','formatted_address','place_id']},(place,st2)=>{
-          if(st2===google.maps.places.PlacesServiceStatus.OK)
-            setBiz({name:place.name,address:place.formatted_address||'Service Area Business',lat:place.geometry.location.lat(),lng:place.geometry.location.lng(),placeId:place.place_id});
+Return ONLY a JSON array of up to 6 results with fields: name, address, lat, lng, place_id.
+Format: [{"name":"...","address":"...","lat":0.0,"lng":0.0,"place_id":"ChIJ..."}]
+No other text.`
+      }]
+    })
+  })
+  .then(r=>r.json())
+  .then(data=>{
+    const text=data.content&&data.content[0]?data.content[0].text:'';
+    try{
+      const clean=text.replace(/```json|```/g,'').trim();
+      const results=JSON.parse(clean);
+      if(results&&results.length){
+        drop.innerHTML=results.map((r,i)=>`<div class="acp" data-i="${i}">
+          <div class="acp-main">${r.name}</div>
+          <div class="acp-sub">${r.address||'Service Area Business'}</div>
+        </div>`).join('');
+        drop.querySelectorAll('.acp').forEach(el=>{
+          el.addEventListener('mousedown',e=>{
+            e.preventDefault();
+            const r=results[+el.dataset.i];
+            document.getElementById('biz-ac').value=r.name;
+            drop.style.display='none';
+            setBiz({name:r.name,address:r.address||'Service Area Business',
+              lat:r.lat,lng:r.lng,placeId:r.place_id});
+          });
         });
-      });
-    });
-  }
+      } else {
+        drop.innerHTML='<div class="acp"><div class="acp-main" style="color:#e24b4a">No results found. Try adding city + state.</div></div>';
+      }
+    }catch(e){
+      drop.innerHTML='<div class="acp"><div class="acp-main" style="color:#e24b4a">Search failed. Try selecting from dropdown as you type.</div></div>';
+    }
+  })
+  .catch(()=>{
+    drop.innerHTML='<div class="acp"><div class="acp-main" style="color:#e24b4a">Search unavailable. Use the dropdown as you type instead.</div></div>';
+  });
 }
 
 function setBiz(b){
