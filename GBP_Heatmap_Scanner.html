@@ -287,36 +287,40 @@ window.initMap=function(){
 
 // ---- SEARCH ----
 function setupWidget(){
-  // Native Google Autocomplete widget with NO type restrictions
-  // This is the most reliable way - same engine as Google Maps search
-  const widget=new google.maps.places.Autocomplete(
-    document.getElementById('biz-ac'),
-    {
-      fields:['geometry','name','formatted_address','place_id'],
-      // No 'types' restriction = searches ALL place types including SABs
-    }
-  );
-  // Bias to current map viewport - updates as user pans
-  map.addListener('bounds_changed',()=>{
-    widget.setBounds(map.getBounds());
-  });
-  widget.addListener('place_changed',()=>{
-    const p=widget.getPlace();
-    if(!p||!p.geometry){
-      // User pressed Enter without selecting - show message
-      document.getElementById('ac-drop').innerHTML='<div class="acp"><div class="acp-main" style="color:#e24b4a">Please select a business from the dropdown list that appears as you type.</div></div>';
-      document.getElementById('ac-drop').style.display='block';
-      setTimeout(()=>document.getElementById('ac-drop').style.display='none',4000);
-      return;
-    }
-    document.getElementById('ac-drop').style.display='none';
-    setBiz({
-      name:p.name,
-      address:p.formatted_address||'Service Area Business',
-      lat:p.geometry.location.lat(),
-      lng:p.geometry.location.lng(),
-      placeId:p.place_id
+  const input=document.getElementById('biz-ac');
+  let widget=null;
+
+  function createWidget(){
+    // Destroy old widget if exists
+    if(widget) google.maps.event.clearInstanceListeners(widget);
+    
+    // Create new widget with current map bounds as strict bias
+    const bounds=map.getBounds();
+    const opts={fields:['geometry','name','formatted_address','place_id']};
+    if(bounds) opts.bounds=bounds;
+    
+    widget=new google.maps.places.Autocomplete(input,opts);
+    widget.addListener('place_changed',()=>{
+      const p=widget.getPlace();
+      if(!p||!p.geometry){
+        document.getElementById('ac-drop').innerHTML='<div class="acp"><div class="acp-main" style="color:#e24b4a">Please select from the dropdown list.</div></div>';
+        document.getElementById('ac-drop').style.display='block';
+        setTimeout(()=>document.getElementById('ac-drop').style.display='none',3000);
+        return;
+      }
+      document.getElementById('ac-drop').style.display='none';
+      setBiz({name:p.name,address:p.formatted_address||'Service Area Business',lat:p.geometry.location.lat(),lng:p.geometry.location.lng(),placeId:p.place_id});
     });
+  }
+
+  // Create widget initially
+  createWidget();
+
+  // Recreate widget when map moves so bounds are always current
+  map.addListener('idle',()=>{
+    const currentVal=input.value;
+    createWidget();
+    input.value=currentVal;
   });
 }
 
