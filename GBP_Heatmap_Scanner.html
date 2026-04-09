@@ -94,13 +94,23 @@ body{font-family:'DM Sans',sans-serif;background:#0f1117;color:#e8eaf0;height:10
     </div>
     <div id="scan-panel" class="on">
       <div>
+        <div class="lbl">Connect Google Business Profile</div>
+        <div class="sub">Sign in with Google to import your GBP locations directly</div>
+        <button id="gbp-login-btn" onclick="signInGoogle()" style="width:100%;padding:9px;font-size:12px;font-weight:600;border:none;border-radius:9px;background:#fff;color:#444;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 1px 3px rgba(0,0,0,0.3);">
+          <svg width="16" height="16" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+          Sign in with Google
+        </button>
+        <div id="gbp-locations" style="display:none;margin-top:6px;"></div>
+        <div id="gbp-user" style="display:none;font-size:11px;color:#7a7f96;margin-top:4px;"></div>
+      </div>
+      <div class="dvd"><div class="dvd-line"></div><span>or search manually</span><div class="dvd-line"></div></div>
+      <div>
         <div class="lbl">Search Business Name</div>
-        <div class="sub">Type business name — Google dropdown will appear. Select your business from the list.</div>
+        <div class="sub">Type name — select from dropdown. Center map to city first for better results.</div>
         <div id="ac-wrap">
           <input id="biz-ac" class="inp" type="text" placeholder="Start typing business name..." autocomplete="off" />
           <div id="ac-drop"></div>
         </div>
-        <div class="sub" style="margin-top:4px;color:#3b7fff;">💡 If not in dropdown: center map to city first, then type name</div>
       </div>
       <div id="biz-card">
         <div class="bc-name" id="bcn"></div>
@@ -128,6 +138,11 @@ body{font-family:'DM Sans',sans-serif;background:#0f1117;color:#e8eaf0;height:10
       <div>
         <div class="lbl">Keyword</div>
         <input id="kw" class="inp" type="text" placeholder="e.g. water damage restoration" />
+      </div>
+      <div>
+        <div class="lbl">Business Name Match <span style="color:#7a7f96;font-weight:400;text-transform:none;">(for SABs)</span></div>
+        <div class="sub">If your business has no address, enter exact name as it appears in Google to match rankings by name</div>
+        <input id="biz-name-override" class="inp" type="text" placeholder="e.g. Peterson SEO" />
       </div>
       <div>
         <div class="lbl">Grid Size</div>
@@ -261,16 +276,33 @@ window.initMap=function(){
   // Native Autocomplete widget
   setupWidget();
   
-  // Click on map to select a business - captures Place ID directly
+  // Click on map to select a business or set location
   map.addListener('click', e=>{
+    // click-to-set mode from Place ID fallback
+    if(window._clickToSet){
+      window._clickToSet=false;
+      const name=document.getElementById('biz-ac').value.trim()||'My Business';
+      const pid=window._manualPlaceId||null;
+      setBiz({
+        name:name,
+        address:'Service Area Business',
+        lat:e.latLng.lat(),
+        lng:e.latLng.lng(),
+        placeId:pid
+      });
+      document.getElementById('status').textContent='Location set! Now enter keyword and run scan.';
+      setTimeout(()=>document.getElementById('status').textContent='',4000);
+      return;
+    }
+    // Normal mode: click on a place marker
     if(e.placeId){
-      e.stop(); // prevent default info window
+      e.stop();
       psvc.getDetails({
         placeId:e.placeId,
         fields:['geometry','name','formatted_address','place_id']
       },(place,st)=>{
         if(st===google.maps.places.PlacesServiceStatus.OK){
-          if(confirm(`Select "${place.name}" as your business?`)){
+          if(confirm('Select "'+place.name+'" as your business?')){
             setBiz({
               name:place.name,
               address:place.formatted_address||'Service Area Business',
@@ -290,21 +322,35 @@ function lookupPlaceId(){
   const pid=document.getElementById('pid-in').value.trim();
   if(!pid){alert('Paste your Place ID first (starts with ChIJ...)');return;}
   if(!psvc){alert('Map still loading, please wait.');return;}
+
+  // Try getDetails first
   psvc.getDetails({
     placeId:pid,
-    fields:['geometry','name','formatted_address','place_id']
+    fields:['geometry','name','formatted_address','place_id','name']
   },(place,st)=>{
-    if(st===google.maps.places.PlacesServiceStatus.OK&&place){
+    if(st===google.maps.places.PlacesServiceStatus.OK&&place&&place.geometry){
       document.getElementById('pid-in').value='';
       setBiz({
         name:place.name,
         address:place.formatted_address||'Service Area Business',
         lat:place.geometry.location.lat(),
         lng:place.geometry.location.lng(),
-        placeId:place.place_id
+        placeId:place.place_id||pid
       });
-    } else {
-      alert('Place ID lookup failed: '+st+'. Make sure the full ID is pasted correctly.');
+      return;
+    }
+
+    // NOT_FOUND can mean the Place ID format is from GBP not Maps API
+    // Try using the map center + manual entry as fallback
+    const center=map.getCenter();
+    const name=document.getElementById('biz-ac').value.trim()||'My Business';
+    
+    if(confirm('Place ID not found in Maps API (this happens with some GBP IDs).\n\nWould you like to set the business location by clicking on the map instead?\n\nClick OK then click your business location on the map.')){
+      // Enable click-to-set mode
+      document.getElementById('pid-in').value='';
+      document.getElementById('status').textContent='Click your business location on the map to set it';
+      window._manualPlaceId=pid;
+      window._clickToSet=true;
     }
   });
 }
@@ -380,39 +426,46 @@ function doSearch(){
   drop.style.display='block';
 
   const center=map?map.getCenter():null;
+  const lat=center?center.lat():39.5;
+  const lng=center?center.lng():-98.35;
 
-  // PlacesService.textSearch IS available in Maps JS API browser
-  const req={query:v};
-  if(center){
-    req.location=center;
-    req.radius=100000;
-  }
-
-  psvc.textSearch(req,(results,status)=>{
-    console.log('textSearch status:',status,'results:',results);
-    if(status===google.maps.places.PlacesServiceStatus.OK&&results&&results.length){
-      drop.innerHTML=results.slice(0,8).map((r,i)=>`<div class="acp" data-i="${i}">
-        <div class="acp-main">${r.name}</div>
-        <div class="acp-sub">${r.formatted_address||r.vicinity||'Service Area Business'}</div>
-      </div>`).join('');
-      drop.querySelectorAll('.acp').forEach(el=>{
-        el.addEventListener('mousedown',e=>{
-          e.preventDefault();
-          const r=results[+el.dataset.i];
-          drop.style.display='none';
-          setBiz({
-            name:r.name,
-            address:r.formatted_address||r.vicinity||'Service Area Business',
-            lat:r.geometry.location.lat(),
-            lng:r.geometry.location.lng(),
-            placeId:r.place_id
+  // Use Places API (New) searchByText - works for SABs
+  if(google.maps.places.Place&&google.maps.places.Place.searchByText){
+    google.maps.places.Place.searchByText({
+      textQuery: v,
+      locationBias:{circle:{center:{lat,lng},radius:150000}},
+      maxResultCount: 8,
+      fields:['displayName','formattedAddress','location','id']
+    }).then(({places})=>{
+      if(places&&places.length){
+        drop.innerHTML=places.map((p,i)=>`<div class="acp" data-i="${i}">
+          <div class="acp-main">${p.displayName||'Unknown'}</div>
+          <div class="acp-sub">${p.formattedAddress||'Service Area Business'}</div>
+        </div>`).join('');
+        drop.querySelectorAll('.acp').forEach(el=>{
+          el.addEventListener('mousedown',e=>{
+            e.preventDefault();
+            const p=places[+el.dataset.i];
+            drop.style.display='none';
+            setBiz({
+              name:p.displayName,
+              address:p.formattedAddress||'Service Area Business',
+              lat:p.location.lat(),
+              lng:p.location.lng(),
+              placeId:p.id
+            });
           });
         });
-      });
-    } else {
-      drop.innerHTML=`<div class="acp"><div class="acp-main" style="color:#e24b4a">Status: ${status}. Try clicking the business on the map instead.</div></div>`;
-    }
-  });
+      }else{
+        drop.innerHTML='<div class="acp"><div class="acp-main" style="color:#e24b4a">No results found near map center. Make sure map is centered on the business city.</div></div>';
+      }
+    }).catch(err=>{
+      console.error('searchByText error:',err);
+      drop.innerHTML=`<div class="acp"><div class="acp-main" style="color:#e24b4a">Search error: ${err.message||err}. Try typing in box above for autocomplete.</div></div>`;
+    });
+  }else{
+    drop.innerHTML='<div class="acp"><div class="acp-main" style="color:#e24b4a">Places API (New) not available. Try typing in the search box above.</div></div>';
+  }
 }
 
 function setBiz(b){
@@ -422,6 +475,9 @@ function setBiz(b){
   document.getElementById('biz-card').style.display='block';
   document.getElementById('biz-ac').value='';
   document.getElementById('bn').textContent=b.name;
+  // Pre-fill name override if empty
+  const nameOverride=document.getElementById('biz-name-override');
+  if(nameOverride&&!nameOverride.value)nameOverride.value=b.name;
   document.getElementById('bn').style.color='#e8eaf0';
   document.getElementById('bd').textContent=b.address;
   document.getElementById('ph').style.display='none';
@@ -481,10 +537,116 @@ function geoAddr(){
   });
 }
 
+// Google OAuth + My Business API
+const OAUTH_CLIENT_ID='574254588953-hghthc5noggdoauic401gv63h5ek1lk2.apps.googleusercontent.com';
+let accessToken=null;
+
+function signInGoogle(){
+  const scope='https://www.googleapis.com/auth/business.manage';
+  const redirectUri=window.location.href.split('?')[0];
+  
+  // Use Google Identity Services
+  if(window.google&&google.accounts&&google.accounts.oauth2){
+    const client=google.accounts.oauth2.initTokenClient({
+      client_id:OAUTH_CLIENT_ID,
+      scope:scope,
+      callback:(resp)=>{
+        if(resp.access_token){
+          accessToken=resp.access_token;
+          loadGBPLocations();
+        }
+      }
+    });
+    client.requestAccessToken();
+  } else {
+    alert('Loading Google Sign In... please try again in a moment.');
+  }
+}
+
+async function loadGBPLocations(){
+  if(!accessToken)return;
+  document.getElementById('gbp-login-btn').style.display='none';
+  document.getElementById('gbp-user').style.display='block';
+  document.getElementById('gbp-user').textContent='Loading your GBP locations...';
+  
+  try{
+    // Get accounts
+    const acctResp=await fetch('https://mybusinessaccountmanagement.googleapis.com/v1/accounts',{
+      headers:{Authorization:'Bearer '+accessToken}
+    });
+    const acctData=await acctResp.json();
+    const accounts=acctData.accounts||[];
+    if(!accounts.length){
+      document.getElementById('gbp-user').textContent='No GBP accounts found.';
+      return;
+    }
+
+    // Get locations for first account
+    const acctName=accounts[0].name;
+    const locResp=await fetch(`https://mybusinessbusinessinformation.googleapis.com/v1/${acctName}/locations?readMask=name,title,storefrontAddress,latlng,websiteUri,phoneNumbers`,{
+      headers:{Authorization:'Bearer '+accessToken}
+    });
+    const locData=await locResp.json();
+    const locations=locData.locations||[];
+    
+    document.getElementById('gbp-user').textContent=`Found ${locations.length} GBP location(s)`;
+    
+    const container=document.getElementById('gbp-locations');
+    container.style.display='block';
+    container.innerHTML=locations.map((loc,i)=>`
+      <div class="acp" data-i="${i}" onclick="selectGBPLocation(${i})" style="cursor:pointer;border:1px solid rgba(255,255,255,0.1);border-radius:7px;margin-top:4px;">
+        <div class="acp-main">${loc.title||'My Business'}</div>
+        <div class="acp-sub">${loc.storefrontAddress?[loc.storefrontAddress.addressLines,loc.storefrontAddress.locality,loc.storefrontAddress.administrativeArea].flat().filter(Boolean).join(', '):'Service Area Business'}</div>
+      </div>`).join('');
+    
+    // Store locations for selection
+    window._gbpLocations=locations;
+    
+  }catch(e){
+    document.getElementById('gbp-user').textContent='Error loading locations: '+e.message;
+    document.getElementById('gbp-login-btn').style.display='block';
+  }
+}
+
+function selectGBPLocation(i){
+  const loc=window._gbpLocations[i];
+  if(!loc)return;
+  
+  const name=loc.title||'My Business';
+  let lat,lng,address='Service Area Business';
+  
+  // Get coordinates - SABs have latlng even without storefront
+  if(loc.latlng){
+    lat=loc.latlng.latitude;
+    lng=loc.latlng.longitude;
+  }
+  
+  // Get address if available
+  if(loc.storefrontAddress){
+    const a=loc.storefrontAddress;
+    address=[...(a.addressLines||[]),a.locality,a.administrativeArea,a.postalCode].filter(Boolean).join(', ');
+  }
+  
+  // Extract Place ID from location name (format: accounts/xxx/locations/yyy)
+  // The location name IS the GBP identifier we can use
+  const gbpId=loc.name;
+  
+  if(lat&&lng){
+    setBiz({name,address,lat,lng,placeId:null,gbpId,gbpName:name});
+    document.getElementById('gbp-locations').querySelectorAll('.acp').forEach(el=>el.style.background='');
+    document.querySelectorAll('#gbp-locations .acp')[i].style.background='rgba(59,127,255,0.2)';
+  } else {
+    alert('This location has no coordinates in GBP. Please set a service area in your GBP dashboard.');
+  }
+}
+
 async function runScan(){
   if(!biz){alert('Select a business first.');return;}
   const kw=document.getElementById('kw').value.trim();
   if(!kw){alert('Enter a keyword.');return;}
+  // Use name override for matching if provided
+  const nameOverride=document.getElementById('biz-name-override').value.trim();
+  if(nameOverride) biz.name=nameOverride;
   document.getElementById('run-btn').disabled=true;
   clearMarks();
   const[cols,rows]=gsel.split('x').map(Number);
@@ -550,13 +712,71 @@ function drawMarks(results){
 
 function getRank(pos,kw){
   return new Promise(resolve=>{
-    if(!psvc||!biz||!biz.placeId){resolve(21);return;}
-    psvc.nearbySearch({location:new google.maps.LatLng(pos.lat,pos.lng),rankBy:google.maps.places.RankBy.DISTANCE,keyword:kw},(res,st)=>{
-      if(st===google.maps.places.PlacesServiceStatus.OK&&res){
-        const i=res.findIndex(r=>r.place_id===biz.placeId);
-        resolve(i>=0?i+1:21);
-      }else resolve(21);
-    });
+    if(!psvc||!biz){resolve(21);return;}
+    const bizName=(document.getElementById('biz-name-override').value.trim()||biz.name||'').toLowerCase().trim();
+    const lat=pos.lat, lng=pos.lng;
+
+    // Use Places API (New) searchByText - finds SABs with hidden addresses
+    // This is the correct API per Google documentation for SAB scanning
+    if(google.maps.places.Place&&google.maps.places.Place.searchByText){
+      google.maps.places.Place.searchByText({
+        textQuery: kw,
+        locationBias: {
+          circle: {
+            center: {lat, lng},
+            radius: 500  // tight radius = local results near this grid point
+          }
+        },
+        maxResultCount: 20,
+        fields: ['displayName','id','formattedAddress','location']
+      }).then(({places})=>{
+        if(places&&places.length){
+          let i=-1;
+          // Match by Place ID
+          if(biz.placeId) i=places.findIndex(p=>p.id===biz.placeId);
+          // Match by name
+          if(i<0&&bizName) i=places.findIndex(p=>{
+            const pn=(p.displayName||'').toLowerCase().trim();
+            return pn===bizName||pn.includes(bizName)||bizName.includes(pn);
+          });
+          resolve(i>=0?i+1:21);
+        }else resolve(21);
+      }).catch(()=>{
+        // Fallback to old nearbySearch
+        psvc.nearbySearch({
+          location:new google.maps.LatLng(lat,lng),
+          rankBy:google.maps.places.RankBy.DISTANCE,
+          keyword:kw
+        },(res,st)=>{
+          if(st===google.maps.places.PlacesServiceStatus.OK&&res){
+            let i=-1;
+            if(biz.placeId) i=res.findIndex(r=>r.place_id===biz.placeId);
+            if(i<0&&bizName) i=res.findIndex(r=>{
+              const rn=(r.name||'').toLowerCase().trim();
+              return rn===bizName||rn.includes(bizName)||bizName.includes(rn);
+            });
+            resolve(i>=0?i+1:21);
+          }else resolve(21);
+        });
+      });
+    }else{
+      // Fallback for older API version
+      psvc.nearbySearch({
+        location:new google.maps.LatLng(lat,lng),
+        rankBy:google.maps.places.RankBy.DISTANCE,
+        keyword:kw
+      },(res,st)=>{
+        if(st===google.maps.places.PlacesServiceStatus.OK&&res){
+          let i=-1;
+          if(biz.placeId) i=res.findIndex(r=>r.place_id===biz.placeId);
+          if(i<0&&bizName) i=res.findIndex(r=>{
+            const rn=(r.name||'').toLowerCase().trim();
+            return rn===bizName||rn.includes(bizName)||bizName.includes(rn);
+          });
+          resolve(i>=0?i+1:21);
+        }else resolve(21);
+      });
+    }
   });
 }
 
@@ -696,6 +916,7 @@ function loadScan(id){
 }
 function pngH(id){const h=hist.find(x=>x.id===id);if(!h)return;const p=scan;scan=h;exportPNG();scan=p;}
 </script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyB17iRe_iJo30AO0Yj11x0iwVTtcgurv_k&libraries=places,marker&callback=initMap&loading=async&v=weekly" defer></script>
 </body>
 </html>
