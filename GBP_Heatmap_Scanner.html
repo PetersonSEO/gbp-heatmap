@@ -236,57 +236,76 @@ function openGoogleMaps(){
 function extractFromUrl(){
   const url=document.getElementById('maps-url-in').value.trim();
   if(!url){alert('Paste a Google Maps URL first.');return;}
-  
-  // Extract Place ID from Google Maps URL
-  // Format 1: /maps/place/Name/@lat,lng,zoom/data=...!1sChIJ...
-  // Format 2: place_id=ChIJ...
-  // Format 3: !1s0x... (hex format)
-  
-  let placeId=null;
-  let lat=null,lng=null,name=null;
 
-  // Try to extract ChIJ place ID
-  const chijMatch=url.match(/!1s(ChIJ[^!&]+)/);
-  if(chijMatch) placeId=decodeURIComponent(chijMatch[1]);
-
-  // Try hex format !1s0x...
-  const hexMatch=url.match(/!1s(0x[^!&]+)/);
-  
-  // Extract coordinates from URL
-  const coordMatch=url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
-  if(coordMatch){lat=parseFloat(coordMatch[1]);lng=parseFloat(coordMatch[2]);}
+  let placeId=null, lat=null, lng=null, name=null;
 
   // Extract name from URL path
   const nameMatch=url.match(/\/maps\/place\/([^/@]+)/);
   if(nameMatch) name=decodeURIComponent(nameMatch[1].replace(/\+/g,' '));
 
-  if(placeId&&psvc){
-    // Look up full details by Place ID
-    psvc.getDetails({placeId,fields:['geometry','name','formatted_address','place_id']},(place,st)=>{
-      if(st===google.maps.places.PlacesServiceStatus.OK&&place){
-        document.getElementById('pid-paste-area').style.display='none';
-        document.getElementById('search-drop').style.display='none';
-        document.getElementById('maps-url-in').value='';
-        setBiz({name:place.name,address:place.formatted_address||'Service Area Business',
-          lat:place.geometry.location.lat(),lng:place.geometry.location.lng(),placeId:place.place_id});
-      }else if(lat&&lng){
-        // Place ID lookup failed but we have coords - use those
-        document.getElementById('pid-paste-area').style.display='none';
-        document.getElementById('search-drop').style.display='none';
-        setBiz({name:name||document.getElementById('biz-ac').value||'Business',
-          address:'Service Area Business',lat,lng,placeId:placeId||null});
-      }else{
-        alert('Could not extract business details from URL. Make sure you copied the full Google Maps URL after clicking on the business listing.');
-      }
-    });
-  }else if(lat&&lng){
-    // No Place ID but have coordinates
+  // Extract coordinates - use the !3d and !4d values which are the BUSINESS coordinates
+  // These are more accurate than the @lat,lng which is just the map view center
+  const latMatch=url.match(/!3d(-?\d+\.\d+)/);
+  const lngMatch=url.match(/!4d(-?\d+\.\d+)/);
+  if(latMatch&&lngMatch){
+    lat=parseFloat(latMatch[1]);
+    lng=parseFloat(lngMatch[1]);
+  } else {
+    // Fall back to @ coordinates
+    const coordMatch=url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+    if(coordMatch){lat=parseFloat(coordMatch[1]);lng=parseFloat(coordMatch[2]);}
+  }
+
+  // Extract Place ID - try ChIJ format first
+  const chijMatch=url.match(/!1s(ChIJ[^!&]+)/);
+  if(chijMatch) placeId=decodeURIComponent(chijMatch[1]);
+
+  // Convert hex place ID (0x...:0x...) to ChIJ format
+  if(!placeId){
+    const hexMatch=url.match(/!1s(0x[0-9a-fA-F]+:0x[0-9a-fA-F]+)/);
+    if(hexMatch){
+      // Store hex ID - we'll use coords + name matching instead
+      placeId=null; // hex IDs don't work with getDetails
+    }
+  }
+
+  const bizName=name||document.getElementById('biz-ac').value.trim()||'Business';
+
+  // Check if coordinates are valid (not Pacific Ocean etc)
+  const validCoords=lat&&lng&&!(lat>40&&lat<50&&lng<-120&&lng>-135);
+
+  if(!validCoords&&lat&&lng){
+    // Coordinates look like Pacific Ocean - SAB with no real location
+    // SAB with no real location - use coords anyway, scan will still work
+    // The ranking will use name matching near those coordinates
+    setBiz({name:bizName,address:'Service Area Business',lat,lng,placeId:null});
     document.getElementById('pid-paste-area').style.display='none';
     document.getElementById('search-drop').style.display='none';
-    setBiz({name:name||document.getElementById('biz-ac').value||'Business',
-      address:'Service Area Business',lat,lng,placeId:null});
+    document.getElementById('maps-url-in').value='';
+    return;
+  }
+
+  if(lat&&lng){
+    document.getElementById('pid-paste-area').style.display='none';
+    document.getElementById('search-drop').style.display='none';
+    document.getElementById('maps-url-in').value='';
+
+    if(placeId&&psvc){
+      // Try to get full details with Place ID
+      psvc.getDetails({placeId,fields:['geometry','name','formatted_address','place_id']},(place,st)=>{
+        if(st===google.maps.places.PlacesServiceStatus.OK&&place){
+          setBiz({name:place.name,address:place.formatted_address||'Service Area Business',
+            lat:place.geometry.location.lat(),lng:place.geometry.location.lng(),placeId:place.place_id});
+        }else{
+          // getDetails failed - use coords and name from URL
+          setBiz({name:bizName,address:'Service Area Business',lat,lng,placeId:null});
+        }
+      });
+    }else{
+      setBiz({name:bizName,address:'Service Area Business',lat,lng,placeId:null});
+    }
   }else{
-    alert('Could not read that URL. Try: search business on Google Maps → click their listing → copy the URL from your browser address bar → paste here.');
+    alert('Could not read coordinates from that URL. Make sure you clicked on the business listing in Google Maps before copying the URL.');
   }
 }
 
@@ -442,6 +461,7 @@ async function runScan(){
   const kw=document.getElementById('kw').value.trim();
   if(!kw){alert('Enter a keyword.');return;}
   document.getElementById('run-btn').disabled=true;
+  window._logged=false;window._logged2=false;
   clearMarks();
   const[cols,rows]=gsel.split('x').map(Number);
   const sm=parseFloat(ssel)*1609.34;
@@ -474,7 +494,14 @@ function fitAndDraw(results){
   const bounds=new google.maps.LatLngBounds();
   results.forEach(p=>bounds.extend(new google.maps.LatLng(p.lat,p.lng)));
   map.fitBounds(bounds,60);
-  google.maps.event.addListenerOnce(map,'idle',()=>drawMarks(results));
+  // Use both idle and a timeout fallback to ensure circles always draw
+  let drawn=false;
+  google.maps.event.addListenerOnce(map,'idle',()=>{
+    if(!drawn){drawn=true;drawMarks(results);}
+  });
+  setTimeout(()=>{
+    if(!drawn){drawn=true;drawMarks(results);}
+  },2000);
 }
 
 function drawMarks(results){
@@ -483,7 +510,7 @@ function drawMarks(results){
   const zoom=map.getZoom();
   const mpp=(156543.03392*Math.cos(results[0].lat*Math.PI/180))/Math.pow(2,zoom);
   const spacingPx=(parseFloat(scan.spacing)*1609.34)/mpp;
-  const R=Math.max(8,spacingPx*0.25);
+  const R=Math.max(10,spacingPx*0.38);
   results.forEach(pt=>{
     const label=pt.rank>=20?'20+':String(pt.rank);
     const fs=label.length>2?Math.max(7,Math.round(R*0.44)):Math.max(9,Math.round(R*0.56));
@@ -531,6 +558,17 @@ function getRank(pos,kw){
 
 function nearbyRank(loc,kw,bizName,resolve){
   psvc.nearbySearch({location:loc,rankBy:google.maps.places.RankBy.DISTANCE,keyword:kw},(res,st)=>{
+    // Log first grid point results so we can see what's coming back
+    if(!window._logged){
+      window._logged=true;
+      console.log('=== FIRST GRID POINT DEBUG ===');
+      console.log('Keyword:',kw);
+      console.log('Business name looking for:',bizName);
+      console.log('Place ID looking for:',biz.placeId);
+      console.log('Status:',st);
+      console.log('Results count:',res?res.length:0);
+      if(res) res.slice(0,5).forEach((r,i)=>console.log(i+1,r.name,r.place_id,r.vicinity));
+    }
     if(st===google.maps.places.PlacesServiceStatus.OK&&res){
       let i=-1;
       if(biz.placeId) i=res.findIndex(r=>r.place_id===biz.placeId);
@@ -538,8 +576,25 @@ function nearbyRank(loc,kw,bizName,resolve){
         const rn=(r.name||'').toLowerCase().trim();
         return rn===bizName||rn.includes(bizName)||bizName.includes(rn);
       });
-      resolve(i>=0?i+1:21);
-    }else resolve(21);
+      if(i>=0){resolve(i+1);return;}
+    }
+    psvc.nearbySearch({location:loc,rankBy:google.maps.places.RankBy.DISTANCE,keyword:bizName},(res2,st2)=>{
+      if(!window._logged2){
+        window._logged2=true;
+        console.log('=== NAME SEARCH RESULTS ===');
+        console.log('Status:',st2);
+        if(res2) res2.slice(0,5).forEach((r,i)=>console.log(i+1,r.name,r.place_id));
+      }
+      if(st2===google.maps.places.PlacesServiceStatus.OK&&res2){
+        let j=-1;
+        if(biz.placeId) j=res2.findIndex(r=>r.place_id===biz.placeId);
+        if(j<0) j=res2.findIndex(r=>{
+          const rn=(r.name||'').toLowerCase().trim();
+          return rn===bizName||rn.includes(bizName)||bizName.includes(rn);
+        });
+        resolve(j>=0?j+1:21);
+      }else resolve(21);
+    });
   });
 }
 
