@@ -542,16 +542,30 @@ function getRank(pos,kw){
 }
 
 function nearbyRank(loc,kw,bizName,resolve){
-  psvc.nearbySearch({location:loc,rankBy:google.maps.places.RankBy.DISTANCE,keyword:kw},(res,st)=>{
+  // Timeout safety - if API hangs, resolve as 21 after 8 seconds
+  let resolved=false;
+  const timeout=setTimeout(()=>{
+    if(!resolved){
+      resolved=true;
+      dbg('TIMEOUT on keyword search');
+      resolve(21);
+    }
+  },8000);
+
+  psvc.nearbySearch({
+    location:loc,
+    rankBy:google.maps.places.RankBy.DISTANCE,
+    keyword:kw
+  },(res,st)=>{
+    if(resolved)return;
     if(!window._logged){
       window._logged=true;
-      dbg('=== KEYWORD SEARCH ===');
-      dbg('KW: '+kw);
-      dbg('Looking for: '+bizName);
+      dbg('=== KEYWORD: '+kw+' ===');
+      dbg('Looking for: "'+bizName+'"');
       dbg('Place ID: '+(biz.placeId||'none'));
       dbg('Status: '+st);
       dbg('Results: '+(res?res.length:0));
-      if(res) res.slice(0,5).forEach((r,i)=>dbg((i+1)+'. '+r.name+' | '+r.place_id));
+      if(res) res.slice(0,5).forEach((r,i)=>dbg((i+1)+'. '+r.name));
     }
     if(st===google.maps.places.PlacesServiceStatus.OK&&res){
       let i=-1;
@@ -560,15 +574,27 @@ function nearbyRank(loc,kw,bizName,resolve){
         const rn=(r.name||'').toLowerCase().trim();
         return rn===bizName||rn.includes(bizName)||bizName.includes(rn);
       });
-      if(i>=0){resolve(i+1);return;}
+      if(i>=0){clearTimeout(timeout);resolved=true;resolve(i+1);return;}
     }
-    psvc.nearbySearch({location:loc,rankBy:google.maps.places.RankBy.DISTANCE,keyword:bizName},(res2,st2)=>{
+    // Try name search
+    const timeout2=setTimeout(()=>{
+      if(!resolved){resolved=true;resolve(21);}
+    },8000);
+    psvc.nearbySearch({
+      location:loc,
+      rankBy:google.maps.places.RankBy.DISTANCE,
+      keyword:bizName
+    },(res2,st2)=>{
+      clearTimeout(timeout2);
+      if(resolved)return;
       if(!window._logged2){
         window._logged2=true;
-        dbg('=== NAME SEARCH ===');
+        dbg('=== NAME: '+bizName+' ===');
         dbg('Status: '+st2);
-        if(res2) res2.slice(0,5).forEach((r,i)=>dbg((i+1)+'. '+r.name+' | '+r.place_id));
+        if(res2) res2.slice(0,5).forEach((r,i)=>dbg((i+1)+'. '+r.name));
       }
+      clearTimeout(timeout);
+      resolved=true;
       if(st2===google.maps.places.PlacesServiceStatus.OK&&res2){
         let j=-1;
         if(biz.placeId) j=res2.findIndex(r=>r.place_id===biz.placeId);
