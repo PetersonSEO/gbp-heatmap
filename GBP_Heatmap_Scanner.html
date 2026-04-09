@@ -10,8 +10,7 @@
 *{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:'DM Sans',sans-serif;background:#0f1117;color:#e8eaf0;height:100vh;overflow:hidden;display:flex;flex-direction:column;}
 #header{display:flex;align-items:center;justify-content:space-between;padding:11px 20px;background:#1a1d27;border-bottom:1px solid rgba(255,255,255,0.08);flex-shrink:0;}
-#header h1{font-size:15px;font-weight:600;}
-#header h1 span{color:#3b7fff;}
+#header h1{font-size:15px;font-weight:600;}#header h1 span{color:#3b7fff;}
 #hdate{font-size:11px;color:#7a7f96;font-family:'DM Mono',monospace;}
 #main{display:flex;flex:1;overflow:hidden;}
 #sidebar{width:272px;min-width:272px;background:#1a1d27;border-right:1px solid rgba(255,255,255,0.08);display:flex;flex-direction:column;overflow:hidden;}
@@ -27,18 +26,18 @@ body{font-family:'DM Sans',sans-serif;background:#0f1117;color:#e8eaf0;height:10
 .inp:focus{border-color:#3b7fff!important;}
 .inp::placeholder{color:#7a7f96!important;}
 #ac-wrap{position:relative;}
-#ac-drop{display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;background:#1e2130;border:1px solid rgba(255,255,255,0.15);border-radius:9px;z-index:99999;max-height:220px;overflow-y:auto;box-shadow:0 8px 28px rgba(0,0,0,.6);}
+#ac-drop{display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;background:#1e2130;border:1px solid rgba(255,255,255,0.15);border-radius:9px;z-index:99999;max-height:240px;overflow-y:auto;box-shadow:0 8px 28px rgba(0,0,0,.6);}
 .acp{padding:9px 12px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.05);}
 .acp:last-child{border-bottom:none;}
 .acp:hover{background:rgba(59,127,255,.14);}
 .acp-main{font-size:12px;font-weight:500;color:#e8eaf0;}
 .acp-sub{font-size:11px;color:#7a7f96;margin-top:1px;}
+#search-btn{width:100%;margin-top:6px;padding:8px;font-size:12px;font-weight:600;border:1px solid rgba(59,127,255,0.5);border-radius:9px;background:rgba(59,127,255,0.1);color:#3b7fff;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .15s;}
+#search-btn:hover{background:rgba(59,127,255,0.2);}
 #biz-card{background:rgba(59,127,255,.09);border:1px solid rgba(59,127,255,.32);border-radius:9px;padding:9px 11px;display:none;}
-.bc-name{font-size:12px;font-weight:600;}
-.bc-addr{font-size:11px;color:#7a7f96;margin-top:2px;}
-.bc-clr{font-size:10px;color:#3b7fff;cursor:pointer;margin-top:5px;display:inline-block;}
-.dvd{display:flex;align-items:center;gap:8px;}
-.dvd span{font-size:10px;color:#7a7f96;white-space:nowrap;}
+.bc-name{font-size:12px;font-weight:600;}.bc-addr{font-size:11px;color:#7a7f96;margin-top:2px;}
+.bc-clr{font-size:10px;color:#3b7fff;cursor:pointer;margin-top:4px;display:inline-block;}
+.dvd{display:flex;align-items:center;gap:8px;}.dvd span{font-size:10px;color:#7a7f96;white-space:nowrap;}
 .dvd-line{flex:1;height:1px;background:rgba(255,255,255,0.08);}
 #addr-btn{width:100%;margin-top:5px;padding:7px;font-size:12px;font-weight:600;border:1px solid rgba(255,255,255,0.15);border-radius:7px;background:#22263a;color:#7a7f96;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .15s;}
 #addr-btn:hover{border-color:#3b7fff;color:#3b7fff;}
@@ -101,7 +100,7 @@ body{font-family:'DM Sans',sans-serif;background:#0f1117;color:#e8eaf0;height:10
           <input id="biz-ac" class="inp" type="text" placeholder="e.g. Simmons Builders Alexandria LA" autocomplete="off" />
           <div id="ac-drop"></div>
         </div>
-        <button id="biz-search-btn" onclick="forceSearch()" style="width:100%;margin-top:5px;padding:7px;font-size:12px;font-weight:600;border:1px solid rgba(59,127,255,0.5);border-radius:7px;background:rgba(59,127,255,0.1);color:#3b7fff;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .15s;">Search ↵</button>
+        <button id="search-btn" onclick="doSearch()">Search ↵</button>
       </div>
       <div id="biz-card">
         <div class="bc-name" id="bcn"></div>
@@ -159,10 +158,7 @@ body{font-family:'DM Sans',sans-serif;background:#0f1117;color:#e8eaf0;height:10
   </div>
   <div id="map-area">
     <div id="topbar">
-      <div id="biz-info">
-        <div id="bn">No business selected</div>
-        <div id="bd"></div>
-      </div>
+      <div id="biz-info"><div id="bn">No business selected</div><div id="bd"></div></div>
       <div id="map-btns">
         <button class="mbtn" onclick="clearScan()">Clear</button>
         <button class="mbtn pri" onclick="exportPNG()">PNG ↗</button>
@@ -177,7 +173,7 @@ body{font-family:'DM Sans',sans-serif;background:#0f1117;color:#e8eaf0;height:10
 </div>
 <script>
 const KEY='AIzaSyB17iRe_iJo30AO0Yj11x0iwVTtcgurv_k';
-let map,acSvc,geo,psvc;
+let map,geo,psvc,acSvc;
 let biz=null,gsel='5x5',ssel='0.5';
 let marks=[],scan=null;
 let hist=[];
@@ -223,8 +219,7 @@ window.initMap=function(){
     {featureType:'administrative',elementType:'geometry.stroke',stylers:[{color:'#c8c4bc'}]},
   ];
   map=new google.maps.Map(document.getElementById('map'),{
-    center:{lat:39.5,lng:-98.35},zoom:4,
-    styles:style,
+    center:{lat:39.5,lng:-98.35},zoom:4,styles:style,
     mapTypeControl:false,streetViewControl:false,fullscreenControl:false
   });
   geo=new google.maps.Geocoder();
@@ -233,137 +228,91 @@ window.initMap=function(){
   setupAC();
 };
 
-function forceSearch(){
-  const v=document.getElementById('biz-ac').value.trim();
-  if(!v){alert('Enter a business name first.');return;}
-  if(!psvc){alert('Map not loaded yet, please wait a moment.');return;}
-  const drop=document.getElementById('ac-drop');
-  drop.innerHTML='<div class="acp"><div class="acp-main" style="color:#7a7f96">Searching...</div></div>';
-  drop.style.display='block';
-
-  // Try textSearch first
-  psvc.textSearch({query:v},(res,st)=>{
-    if(st===google.maps.places.PlacesServiceStatus.OK&&res&&res.length){
-      showSearchResults(res);
-    } else {
-      // Fallback: findPlaceFromQuery
-      psvc.findPlaceFromQuery({
-        query:v,
-        fields:['name','formatted_address','geometry','place_id']
-      },(res2,st2)=>{
-        if(st2===google.maps.places.PlacesServiceStatus.OK&&res2&&res2.length){
-          showSearchResults(res2);
-        } else {
-          drop.innerHTML='<div class="acp"><div class="acp-main" style="color:#e24b4a">Not found. Try adding more details like city and state, or use Manual Address below.</div></div>';
-        }
-      });
-    }
-  });
-
-  function showSearchResults(results){
-    drop.innerHTML=results.slice(0,8).map((r,i)=>`
-      <div class="acp" data-i="${i}">
-        <div class="acp-main">${r.name}</div>
-        <div class="acp-sub">${r.formatted_address||''}</div>
-      </div>`).join('');
-    drop.querySelectorAll('.acp').forEach(el=>{
-      el.addEventListener('mousedown',e=>{
-        e.preventDefault();
-        const r=results[+el.dataset.i];
-        document.getElementById('biz-ac').value=r.name;
-        drop.style.display='none';
-        setBiz({
-          name:r.name,
-          address:r.formatted_address,
-          lat:r.geometry.location.lat(),
-          lng:r.geometry.location.lng(),
-          placeId:r.place_id
-        });
-      });
-    });
-  }
-}
-
+// ---- SEARCH ----
 function setupAC(){
   const input=document.getElementById('biz-ac');
   const drop=document.getElementById('ac-drop');
-  let timer=null,preds=[],textResults=[];
+  let timer=null,preds=[];
 
   input.addEventListener('input',function(){
     clearTimeout(timer);
     const v=this.value.trim();
     if(!v||v.length<2){drop.style.display='none';return;}
-    timer=setTimeout(()=>doSearch(v),350);
+    timer=setTimeout(()=>{
+      if(!acSvc)return;
+      acSvc.getPlacePredictions({input:v},(p,s)=>{
+        if(s===google.maps.places.PlacesServiceStatus.OK&&p&&p.length){
+          preds=p;
+          drop.innerHTML=p.slice(0,6).map((r,i)=>`<div class="acp" data-i="${i}"><div class="acp-main">${r.structured_formatting?r.structured_formatting.main_text:r.description}</div><div class="acp-sub">${r.structured_formatting?(r.structured_formatting.secondary_text||''):''}</div></div>`).join('');
+          drop.querySelectorAll('.acp').forEach(el=>{
+            el.addEventListener('mousedown',e=>{
+              e.preventDefault();
+              const pred=preds[+el.dataset.i];
+              input.value=pred.description;
+              drop.style.display='none';
+              psvc.getDetails({placeId:pred.place_id,fields:['geometry','name','formatted_address','place_id']},(place,st)=>{
+                if(st===google.maps.places.PlacesServiceStatus.OK)
+                  setBiz({name:place.name,address:place.formatted_address,lat:place.geometry.location.lat(),lng:place.geometry.location.lng(),placeId:place.place_id});
+              });
+            });
+          });
+          drop.style.display='block';
+        }else drop.style.display='none';
+      });
+    },300);
   });
 
-  input.addEventListener('keydown',function(e){
-    if(e.key==='Enter'){
-      e.preventDefault();
-      clearTimeout(timer);
-      drop.style.display='none';
-      forceSearch();
-    }
+  input.addEventListener('keydown',e=>{
+    if(e.key==='Enter'){e.preventDefault();drop.style.display='none';doSearch();}
     if(e.key==='Escape')drop.style.display='none';
   });
+  document.addEventListener('click',e=>{if(!e.target.closest('#ac-wrap'))drop.style.display='none';});
+}
 
-  function doSearch(v){
-    let allPreds=[]; let done=0;
-    const finish=()=>{
-      done++;
-      if(done===2){
-        const seen=new Set();
-        const merged=allPreds.filter(p=>{if(seen.has(p.place_id))return false;seen.add(p.place_id);return true;});
-        if(merged.length){preds=merged;showAC(merged.slice(0,8));}
-        else doTextSearch(v);
-      }
-    };
-    acSvc.getPlacePredictions({input:v,types:['establishment']},(p,s)=>{if(s===google.maps.places.PlacesServiceStatus.OK&&p)allPreds=[...allPreds,...p];finish();});
-    acSvc.getPlacePredictions({input:v},(p,s)=>{if(s===google.maps.places.PlacesServiceStatus.OK&&p)allPreds=[...allPreds,...p];finish();});
-  }
+function doSearch(){
+  const v=document.getElementById('biz-ac').value.trim();
+  if(!v){alert('Enter a business name first.');return;}
+  if(!psvc){alert('Map still loading, please wait.');return;}
+  const drop=document.getElementById('ac-drop');
+  drop.innerHTML='<div class="acp"><div class="acp-main" style="color:#7a7f96">Searching...</div></div>';
+  drop.style.display='block';
 
-  function doTextSearch(v){
-    psvc.textSearch({query:v},(res,st)=>{
-      if(st===google.maps.places.PlacesServiceStatus.OK&&res&&res.length){
-        textResults=res;
-        drop.innerHTML=res.slice(0,8).map((r,i)=>`<div class="acp" data-t="tr" data-i="${i}"><div class="acp-main">${r.name}</div><div class="acp-sub">${r.formatted_address||''}</div></div>`).join('');
-        bind(); drop.style.display='block';
-      } else {
-        drop.innerHTML='<div class="acp"><div class="acp-main" style="color:#7a7f96">No results. Try adding city or state.</div></div>';
-        drop.style.display='block';
+  // Try textSearch
+  psvc.textSearch({query:v},(res,st)=>{
+    if(st===google.maps.places.PlacesServiceStatus.OK&&res&&res.length){
+      showResults(res);return;
+    }
+    // Fallback: findPlaceFromQuery
+    psvc.findPlaceFromQuery({query:v,fields:['name','formatted_address','geometry','place_id']},(res2,st2)=>{
+      if(st2===google.maps.places.PlacesServiceStatus.OK&&res2&&res2.length){
+        showResults(res2);return;
       }
+      // Last fallback: geocode the text as an address
+      geo.geocode({address:v},(gres,gst)=>{
+        if(gst==='OK'&&gres&&gres.length){
+          const r=gres[0];
+          drop.style.display='none';
+          setBiz({name:v,address:r.formatted_address,lat:r.geometry.location.lat(),lng:r.geometry.location.lng(),placeId:null,manual:true});
+        }else{
+          drop.innerHTML='<div class="acp"><div class="acp-main" style="color:#e24b4a">Not found. Try the Manual Address section below, or add more detail (city, state).</div></div>';
+        }
+      });
     });
-  }
+  });
 
-  function showAC(p){
-    drop.innerHTML=p.map((r,i)=>`<div class="acp" data-t="ac" data-i="${i}"><div class="acp-main">${r.structured_formatting?r.structured_formatting.main_text:r.description}</div><div class="acp-sub">${r.structured_formatting?(r.structured_formatting.secondary_text||''):''}</div></div>`).join('');
-    bind(); drop.style.display='block';
-  }
-
-  function bind(){
+  function showResults(results){
+    drop.innerHTML=results.slice(0,8).map((r,i)=>`<div class="acp" data-i="${i}"><div class="acp-main">${r.name}</div><div class="acp-sub">${r.formatted_address||''}</div></div>`).join('');
+    const arr=results;
     drop.querySelectorAll('.acp').forEach(el=>{
       el.addEventListener('mousedown',e=>{
         e.preventDefault();
-        const i=+el.dataset.i;
-        if(el.dataset.t==='ac') selectPred(preds[i]);
-        else selectTextResult(textResults[i]);
+        const r=arr[+el.dataset.i];
+        document.getElementById('biz-ac').value=r.name;
+        drop.style.display='none';
+        setBiz({name:r.name,address:r.formatted_address,lat:r.geometry.location.lat(),lng:r.geometry.location.lng(),placeId:r.place_id});
       });
     });
   }
-
-  function selectPred(pred){
-    input.value=pred.description; drop.style.display='none';
-    psvc.getDetails({placeId:pred.place_id,fields:['geometry','name','formatted_address','place_id']},(place,st)=>{
-      if(st===google.maps.places.PlacesServiceStatus.OK)
-        setBiz({name:place.name,address:place.formatted_address,lat:place.geometry.location.lat(),lng:place.geometry.location.lng(),placeId:place.place_id});
-    });
-  }
-
-  function selectTextResult(r){
-    input.value=r.name; drop.style.display='none';
-    setBiz({name:r.name,address:r.formatted_address,lat:r.geometry.location.lat(),lng:r.geometry.location.lng(),placeId:r.place_id});
-  }
-
-  document.addEventListener('click',e=>{if(!e.target.closest('#ac-wrap'))drop.style.display='none';});
 }
 
 function setBiz(b){
@@ -391,14 +340,24 @@ function clearBiz(){
 function geoAddr(){
   const a=document.getElementById('addr-in').value.trim();
   if(!a){alert('Enter an address first.');return;}
+  if(!geo){alert('Map still loading.');return;}
   geo.geocode({address:a},(res,st)=>{
     if(st==='OK'&&res[0]){
       const r=res[0];
       setBiz({name:a,address:r.formatted_address,lat:r.geometry.location.lat(),lng:r.geometry.location.lng(),placeId:null,manual:true});
-    }else alert('Address not found.');
+    }else{
+      // Try with "USA" appended
+      geo.geocode({address:a+', USA'},(res2,st2)=>{
+        if(st2==='OK'&&res2[0]){
+          const r=res2[0];
+          setBiz({name:a,address:r.formatted_address,lat:r.geometry.location.lat(),lng:r.geometry.location.lng(),placeId:null,manual:true});
+        }else alert('Address not found. Try format: 123 Main St, City, ST 12345');
+      });
+    }
   });
 }
 
+// ---- SCAN ----
 async function runScan(){
   if(!biz){alert('Select a business first.');return;}
   const kw=document.getElementById('kw').value.trim();
@@ -425,19 +384,8 @@ async function runScan(){
   document.getElementById('bd').textContent=`${biz.address}  ·  "${kw}"  ·  AGR: ${agr}`;
   scan={id:Date.now(),biz,kw,grid:gsel,spacing:ssel,points:results,agr,date:new Date().toISOString()};
 
-  // Fit map to grid then draw markers at correct zoom
-  const bounds=new google.maps.LatLngBounds();
-  results.forEach(p=>bounds.extend(new google.maps.LatLng(p.lat,p.lng)));
-  // Use padding so circles near edges aren't cut off
-  const pad=Math.max(50, Math.min(150, 80));
-  map.fitBounds(bounds, pad);
-  // Wait for map to fully settle at new zoom before drawing circles
-  google.maps.event.addListenerOnce(map,'idle',()=>{
-    // Zoom out one more level so circles aren't too big
-    const currentZoom = map.getZoom();
-    map.setZoom(currentZoom - 1);
-    google.maps.event.addListenerOnce(map,'idle',()=>drawMarks(results));
-  });
+  // Fit map then draw markers
+  fitAndDraw(results);
 
   saveHist(scan);
   document.getElementById('run-btn').disabled=false;
@@ -446,28 +394,31 @@ async function runScan(){
   updHC();
 }
 
+function fitAndDraw(results){
+  const bounds=new google.maps.LatLngBounds();
+  results.forEach(p=>bounds.extend(new google.maps.LatLng(p.lat,p.lng)));
+  // Padding: large enough so circles at edges are fully visible
+  map.fitBounds(bounds,60);
+  google.maps.event.addListenerOnce(map,'idle',()=>drawMarks(results));
+}
+
 function drawMarks(results){
   clearMarks();
   if(!results.length)return;
   const zoom=map.getZoom();
-  const [cols]=scan.grid.split('x').map(Number);
-  const mapEl=document.getElementById('map');
-  const mapWidthPx=mapEl.offsetWidth||800;
-  // Use same formula as reference app: cellSize = mapWidth/gridSize, radius = cellSize*0.38
-  // This gives circles that fill ~76% of spacing, nearly touching with clear gaps
-  const mpp=(156543.03392*Math.cos(results[0].lat*Math.PI/180))/Math.pow(2,zoom);
+  const lat0=results[Math.floor(results.length/2)].lat;
+  const mpp=(156543.03392*Math.cos(lat0*Math.PI/180))/Math.pow(2,zoom);
   const spacingPx=(parseFloat(scan.spacing)*1609.34)/mpp;
-  // Cap radius so circles never exceed 85% of half-spacing (won't overlap)
-  const R=Math.max(8,Math.min(spacingPx*0.425,42));
-  const fs=R>20?(R>28?Math.round(R*0.5):Math.round(R*0.55)):Math.round(R*0.65);
+  // 42% radius = 84% diameter = circles nearly touching like reference image
+  const R=Math.max(10,spacingPx*0.42);
 
   results.forEach(pt=>{
     const label=pt.rank>=20?'20+':String(pt.rank);
-    const labelFs=label.length>2?Math.max(7,fs-2):Math.max(8,fs);
+    const fs=label.length>2?Math.max(7,Math.round(R*0.44)):Math.max(9,Math.round(R*0.56));
     const m=new google.maps.Marker({
       position:{lat:pt.lat,lng:pt.lng},map,
       icon:{path:google.maps.SymbolPath.CIRCLE,scale:R,fillColor:rc(pt.rank),fillOpacity:0.95,strokeColor:'rgba(0,0,0,0.2)',strokeWeight:1.5},
-      label:{text:label,color:'#ffffff',fontSize:labelFs+'px',fontWeight:'700',fontFamily:'DM Sans,sans-serif'},
+      label:{text:label,color:'#fff',fontSize:fs+'px',fontWeight:'700',fontFamily:'DM Sans,sans-serif'},
       optimized:false
     });
     marks.push(m);
@@ -485,84 +436,70 @@ function getRank(pos,kw){
     });
   });
 }
+
 function clearMarks(){marks.forEach(m=>m.setMap(null));marks=[];}
 function clearScan(){clearMarks();scan=null;if(biz)document.getElementById('bd').textContent=biz.address;}
 
+// ---- PNG EXPORT ----
+// Key insight from reference app: position circles by lat/lng pixel math,
+// size them at 42% of spacing in pixels — SAME as live map
 function exportPNG(){
   if(!scan){alert('Run a scan first.');return;}
   const pts=scan.points;
-  const gridSize=parseInt(scan.grid.split('x')[0]);
   const spacingMiles=parseFloat(scan.spacing);
+  const gridN=parseInt(scan.grid.split('x')[0]);
 
-  // Canvas setup - reference app uses 900px wide
-  const canvasW=1000;
-  const headerH=100;
-  const mapW=canvasW;
-  const mapH=820;
-  const canvasH=headerH+mapH;
+  // Canvas: wide enough, square map section
+  const W=900,headerH=96,mapH=820,H=headerH+mapH;
 
   // Grid bounds
-  const lats=pts.map(p=>p.lat);
-  const lngs=pts.map(p=>p.lng);
+  const lats=pts.map(p=>p.lat),lngs=pts.map(p=>p.lng);
   const minLat=Math.min(...lats),maxLat=Math.max(...lats);
   const minLng=Math.min(...lngs),maxLng=Math.max(...lngs);
   const cLat=(minLat+maxLat)/2,cLng=(minLng+maxLng)/2;
 
-  // Find zoom so grid fits in map with ~20% padding (matching live map zoom-1 approach)
-  function getBestZoom(){
-    for(let z=13;z>=1;z--){
-      const mpp=(156543.03392*Math.cos(cLat*Math.PI/180))/Math.pow(2,z);
-      const latPx=((maxLat-minLat)*111320)/mpp;
-      const lngPx=((maxLng-minLng)*111320*Math.cos(cLat*Math.PI/180))/mpp;
-      if(latPx<mapH*0.62&&lngPx<mapW*0.62){return z;}
-    }
-    return 4;
-  }
-  const mapZoom=getBestZoom();
-
-  // Convert lat/lng to pixel position on map
-  function toPixel(lat,lng){
-    const mpp=(156543.03392*Math.cos(cLat*Math.PI/180))/Math.pow(2,mapZoom);
-    const x=mapW/2+(lng-cLng)*111320*Math.cos(cLat*Math.PI/180)/mpp;
-    const y=mapH/2-(lat-cLat)*111320/mpp;
-    return{x,y:y+headerH};
+  // Find zoom: grid fills 72% of map (14% margin each side) — matches live map with 60px padding
+  let mapZoom=4;
+  for(let z=14;z>=1;z--){
+    const mpp=(156543.03392*Math.cos(cLat*Math.PI/180))/Math.pow(2,z);
+    const lp=((maxLat-minLat)*111320)/mpp;
+    const lnp=((maxLng-minLng)*111320*Math.cos(cLat*Math.PI/180))/mpp;
+    if(lp<mapH*0.72&&lnp<W*0.72){mapZoom=z;break;}
   }
 
-  // Circle radius: same formula as live map
+  // Pixel conversion — same math as drawMarks
   const mpp=(156543.03392*Math.cos(cLat*Math.PI/180))/Math.pow(2,mapZoom);
+  function toXY(lat,lng){
+    return{
+      x:W/2+(lng-cLng)*111320*Math.cos(cLat*Math.PI/180)/mpp,
+      y:headerH+mapH/2-(lat-cLat)*111320/mpp
+    };
+  }
+
+  // Circle radius: SAME formula as live map = 42% of spacing pixels
   const spacingPx=(spacingMiles*1609.34)/mpp;
-  const circleR=Math.max(8,Math.min(spacingPx*0.425,55));
+  const CR=Math.max(10,spacingPx*0.42);
 
   const canvas=document.createElement('canvas');
-  canvas.width=canvasW;canvas.height=canvasH;
+  canvas.width=W;canvas.height=H;
   const ctx=canvas.getContext('2d');
-  ctx.fillStyle='#ffffff';
-  ctx.fillRect(0,0,canvasW,canvasH);
+  ctx.fillStyle='#fff';ctx.fillRect(0,0,W,H);
 
   // Header
-  ctx.fillStyle='#0f172a';
-  ctx.font='bold 24px Arial';
-  ctx.fillText(scan.biz.name,20,34);
+  ctx.fillStyle='#0f172a';ctx.font='bold 22px Arial';
+  ctx.fillText(scan.biz.name,16,30);
+  const ds=new Date(scan.date).toLocaleDateString('en-US',{month:'short',day:'2-digit',year:'numeric'});
+  ctx.fillStyle='#64748b';ctx.font='12px Arial';ctx.textAlign='right';
+  ctx.fillText(ds,W-16,30);ctx.textAlign='left';
+  ctx.fillStyle='#1e40af';ctx.font='bold 13px Arial';
+  ctx.fillText('Search Term: '+scan.kw,16,50);
+  ctx.fillStyle='#0f172a';ctx.font='13px Arial';
+  ctx.fillText('AGR: '+parseFloat(scan.agr).toFixed(1)+'   Grid: '+scan.grid+'   Spacing: '+scan.spacing+'mi',16,68);
+  ctx.fillStyle='#334155';ctx.font='11px Arial';
+  ctx.fillText(scan.biz.address,16,84);
+  ctx.fillStyle='#e2e8f0';ctx.fillRect(0,headerH-2,W,1);
 
-  const dateStr=new Date(scan.date).toLocaleDateString('en-US',{month:'short',day:'2-digit',year:'numeric'});
-  ctx.fillStyle='#64748b';
-  ctx.font='13px Arial';
-  ctx.textAlign='right';
-  ctx.fillText(dateStr,canvasW-20,34);
-  ctx.textAlign='left';
-
-  ctx.fillStyle='#1e40af';
-  ctx.font='bold 14px Arial';
-  ctx.fillText('Search Term: '+scan.kw,20,56);
-
-  ctx.fillStyle='#0f172a';
-  ctx.font='13px Arial';
-  ctx.fillText('AGR: '+parseFloat(scan.agr).toFixed(1)+'   Grid: '+scan.grid+'   Spacing: '+scan.spacing+'mi',20,76);
-
-  ctx.fillStyle='#e2e8f0';
-  ctx.fillRect(0,headerH-1,canvasW,1);
-
-  // Static map
+  // Static map (light style)
   const styles=[
     'feature:all|element:geometry|color:0xf5f3ee',
     'feature:road|element:geometry|color:0xffffff',
@@ -574,63 +511,41 @@ function exportPNG(){
     'feature:poi|visibility:off',
     'feature:transit|visibility:off',
   ].map(s=>'style='+encodeURIComponent(s)).join('&');
-
-  const mapUrl=`https://maps.googleapis.com/maps/api/staticmap?center=${cLat},${cLng}&zoom=${mapZoom}&size=${mapW}x${mapH}&scale=1&${styles}&key=${KEY}`;
+  const mapUrl=`https://maps.googleapis.com/maps/api/staticmap?center=${cLat},${cLng}&zoom=${mapZoom}&size=${W}x${mapH}&scale=1&${styles}&key=${KEY}`;
 
   function drawCircles(){
     pts.forEach(pt=>{
-      const{x,y}=toPixel(pt.lat,pt.lng);
+      const{x,y}=toXY(pt.lat,pt.lng);
       const color=rc(pt.rank);
       const label=pt.rank>=20?'20+':String(pt.rank);
-
       // Shadow
-      ctx.beginPath();
-      ctx.arc(x,y,circleR+1.5,0,Math.PI*2);
-      ctx.fillStyle='rgba(0,0,0,0.12)';
-      ctx.fill();
-
+      ctx.beginPath();ctx.arc(x,y,CR+1,0,Math.PI*2);
+      ctx.fillStyle='rgba(0,0,0,0.12)';ctx.fill();
       // Circle
-      ctx.beginPath();
-      ctx.arc(x,y,circleR,0,Math.PI*2);
-      ctx.fillStyle=color;
-      ctx.fill();
-      ctx.strokeStyle='rgba(255,255,255,0.5)';
-      ctx.lineWidth=1.5;
-      ctx.stroke();
-
-      // White bold number
-      const fs=label.length>2?Math.max(9,Math.floor(circleR*0.55)):Math.max(11,Math.floor(circleR*0.68));
+      ctx.beginPath();ctx.arc(x,y,CR,0,Math.PI*2);
+      ctx.fillStyle=color;ctx.fill();
+      ctx.strokeStyle='rgba(255,255,255,0.4)';ctx.lineWidth=1.5;ctx.stroke();
+      // Number
+      const fs=label.length>2?Math.max(8,Math.floor(CR*0.44)):Math.max(10,Math.floor(CR*0.56));
       ctx.font=`900 ${fs}px Arial`;
-      ctx.textAlign='center';
-      ctx.textBaseline='middle';
-      ctx.strokeStyle='rgba(0,0,0,0.5)';
-      ctx.lineWidth=2;
-      ctx.lineJoin='round';
+      ctx.textAlign='center';ctx.textBaseline='middle';
+      ctx.strokeStyle='rgba(0,0,0,0.45)';ctx.lineWidth=2;ctx.lineJoin='round';
       ctx.strokeText(label,x,y);
-      ctx.fillStyle='#ffffff';
-      ctx.fillText(label,x,y);
+      ctx.fillStyle='#fff';ctx.fillText(label,x,y);
     });
-    ctx.textAlign='left';
-    ctx.textBaseline='alphabetic';
+    ctx.textAlign='left';ctx.textBaseline='alphabetic';
     canvas.toBlob(blob=>window.open(URL.createObjectURL(blob),'_blank'),'image/png');
   }
 
-  const img=new Image();
-  img.crossOrigin='anonymous';
-  img.onload=function(){ctx.drawImage(img,0,headerH,mapW,mapH);drawCircles();};
-  img.onerror=function(){ctx.fillStyle='#e8edf2';ctx.fillRect(0,headerH,mapW,mapH);drawCircles();};
+  const img=new Image();img.crossOrigin='anonymous';
+  img.onload=()=>{ctx.drawImage(img,0,headerH,W,mapH);drawCircles();};
+  img.onerror=()=>{ctx.fillStyle='#e8edf2';ctx.fillRect(0,headerH,W,mapH);drawCircles();};
   img.src=mapUrl;
 }
 
-function saveHist(s){
-  hist.unshift(s);if(hist.length>100)hist=hist.slice(0,100);
-  try{localStorage.setItem('gbp_history',JSON.stringify(hist));}catch(e){}
-}
-function delHist(id){
-  hist=hist.filter(h=>h.id!==id);
-  try{localStorage.setItem('gbp_history',JSON.stringify(hist));}catch(e){}
-  renderHist();updHC();
-}
+// ---- HISTORY ----
+function saveHist(s){hist.unshift(s);if(hist.length>100)hist=hist.slice(0,100);try{localStorage.setItem('gbp_history',JSON.stringify(hist));}catch(e){}}
+function delHist(id){hist=hist.filter(h=>h.id!==id);try{localStorage.setItem('gbp_history',JSON.stringify(hist));}catch(e){}renderHist();updHC();}
 function updHC(){document.getElementById('hc').textContent=hist.length?`(${hist.length})`:''; }
 function renderHist(){
   const el=document.getElementById('hist-list'),em=document.getElementById('he');
@@ -648,20 +563,12 @@ function renderHist(){
   </div>`).join('');
 }
 function loadScan(id){
-  const h=hist.find(x=>x.id===id);
-  if(!h||!map)return;
+  const h=hist.find(x=>x.id===id);if(!h||!map)return;
   clearMarks();biz=h.biz;scan=h;
   setBiz(h.biz);
   document.getElementById('kw').value=h.kw;
   document.getElementById('bd').textContent=`${h.biz.address}  ·  "${h.kw}"  ·  AGR: ${h.agr}`;
-  const bounds=new google.maps.LatLngBounds();
-  h.points.forEach(p=>bounds.extend(new google.maps.LatLng(p.lat,p.lng)));
-  map.fitBounds(bounds,80);
-  google.maps.event.addListenerOnce(map,'idle',()=>{
-    const z=map.getZoom();
-    map.setZoom(z-1);
-    google.maps.event.addListenerOnce(map,'idle',()=>drawMarks(h.points));
-  });
+  fitAndDraw(h.points);
   switchTab('scan');
 }
 function pngH(id){const h=hist.find(x=>x.id===id);if(!h)return;const p=scan;scan=h;exportPNG();scan=p;}
