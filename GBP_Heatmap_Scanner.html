@@ -95,12 +95,12 @@ body{font-family:'DM Sans',sans-serif;background:#0f1117;color:#e8eaf0;height:10
     <div id="scan-panel" class="on">
       <div>
         <div class="lbl">Search Business Name</div>
-        <div class="sub">First pan map to city, then search by name. Or type "Business Name City State"</div>
+        <div class="sub">Type business name — Google dropdown will appear. Select your business from the list.</div>
         <div id="ac-wrap">
-          <input id="biz-ac" class="inp" type="text" placeholder="e.g. Peterson SEO Chico CA" autocomplete="off" />
+          <input id="biz-ac" class="inp" type="text" placeholder="Start typing business name..." autocomplete="off" />
           <div id="ac-drop"></div>
         </div>
-        <button id="search-btn" onclick="doSearch()">Search ↵</button>
+        <div class="sub" style="margin-top:4px;color:#3b7fff;">💡 If not in dropdown: center map to city first, then type name</div>
       </div>
       <div id="biz-card">
         <div class="bc-name" id="bcn"></div>
@@ -287,20 +287,36 @@ window.initMap=function(){
 
 // ---- SEARCH ----
 function setupWidget(){
-  // Native Google Autocomplete widget - guaranteed to work, same as LocalGrids
+  // Native Google Autocomplete widget with NO type restrictions
+  // This is the most reliable way - same engine as Google Maps search
   const widget=new google.maps.places.Autocomplete(
     document.getElementById('biz-ac'),
-    {fields:['geometry','name','formatted_address','place_id']}
+    {
+      fields:['geometry','name','formatted_address','place_id'],
+      // No 'types' restriction = searches ALL place types including SABs
+    }
   );
-  // Bias results to map viewport
+  // Bias to current map viewport - updates as user pans
   map.addListener('bounds_changed',()=>{
     widget.setBounds(map.getBounds());
   });
   widget.addListener('place_changed',()=>{
     const p=widget.getPlace();
-    if(!p.geometry){return;}
+    if(!p||!p.geometry){
+      // User pressed Enter without selecting - show message
+      document.getElementById('ac-drop').innerHTML='<div class="acp"><div class="acp-main" style="color:#e24b4a">Please select a business from the dropdown list that appears as you type.</div></div>';
+      document.getElementById('ac-drop').style.display='block';
+      setTimeout(()=>document.getElementById('ac-drop').style.display='none',4000);
+      return;
+    }
     document.getElementById('ac-drop').style.display='none';
-    setBiz({name:p.name,address:p.formatted_address||'Service Area Business',lat:p.geometry.location.lat(),lng:p.geometry.location.lng(),placeId:p.place_id});
+    setBiz({
+      name:p.name,
+      address:p.formatted_address||'Service Area Business',
+      lat:p.geometry.location.lat(),
+      lng:p.geometry.location.lng(),
+      placeId:p.place_id
+    });
   });
 }
 
