@@ -472,17 +472,43 @@ function clearBiz(){
 function geoAddr(){
   const a=document.getElementById('addr-in').value.trim();
   if(!a){alert('Enter a city first.');return;}
-  if(!geo){alert('Map still loading.');return;}
-  geo.geocode({address:a},(res,st)=>{
-    if(st==='OK'&&res[0]){
-      const r=res[0];
-      map.setCenter({lat:r.geometry.location.lat(),lng:r.geometry.location.lng()});
-      map.setZoom(12);
-      document.getElementById('addr-in').value='';
-      document.getElementById('status').textContent='Map centered — now search your business name above';
-      setTimeout(()=>document.getElementById('status').textContent='',5000);
-    }else{
-      alert('Location not found. Try "City, State" format like "Chico, CA"');
+  // Use autocomplete to find the city - no separate Geocoding API needed
+  if(!acSvc){alert('Map still loading.');return;}
+  acSvc.getPlacePredictions({
+    input:a,
+    types:['(cities)']
+  },(preds,st)=>{
+    if(st===google.maps.places.PlacesServiceStatus.OK&&preds&&preds.length){
+      // Get details of first result to get coordinates
+      psvc.getDetails({
+        placeId:preds[0].place_id,
+        fields:['geometry','name']
+      },(place,st2)=>{
+        if(st2===google.maps.places.PlacesServiceStatus.OK&&place.geometry){
+          map.setCenter(place.geometry.location);
+          map.setZoom(12);
+          document.getElementById('addr-in').value='';
+          document.getElementById('status').textContent='Map centered on '+place.name+' — now type business name above';
+          setTimeout(()=>document.getElementById('status').textContent='',5000);
+        }
+      });
+    } else {
+      // Fallback: just search without type restriction
+      acSvc.getPlacePredictions({input:a},(preds2,st2)=>{
+        if(st2===google.maps.places.PlacesServiceStatus.OK&&preds2&&preds2.length){
+          psvc.getDetails({placeId:preds2[0].place_id,fields:['geometry','name']},(place,st3)=>{
+            if(st3===google.maps.places.PlacesServiceStatus.OK&&place.geometry){
+              map.setCenter(place.geometry.location);
+              map.setZoom(12);
+              document.getElementById('addr-in').value='';
+              document.getElementById('status').textContent='Map centered — now type business name above';
+              setTimeout(()=>document.getElementById('status').textContent='',5000);
+            }
+          });
+        } else {
+          alert('City not found. Try "Chico, CA" or "Alexandria, LA"');
+        }
+      });
     }
   });
 }
