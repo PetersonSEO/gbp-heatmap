@@ -533,11 +533,55 @@ function drawMarks(results){
 
 function getRank(pos,kw){
   return new Promise(resolve=>{
-    if(!psvc||!biz){resolve(21);return;}
-    const loc=new google.maps.LatLng(pos.lat,pos.lng);
+    if(!biz){resolve(21);return;}
     const bizName=biz.name.toLowerCase().trim();
-    // Go straight to nearbyRank - debug panel will show results
-    nearbyRank(loc,kw,bizName,resolve);
+    
+    // Use Places API New searchByText - confirmed enabled on this key
+    if(google.maps.places&&google.maps.places.Place&&google.maps.places.Place.searchByText){
+      let resolved=false;
+      // Timeout safety
+      const t=setTimeout(()=>{if(!resolved){resolved=true;dbg('TIMEOUT pt '+pos.lat.toFixed(3));resolve(21);}},10000);
+      
+      google.maps.places.Place.searchByText({
+        textQuery:kw,
+        locationBias:{circle:{center:{lat:pos.lat,lng:pos.lng},radius:2000}},
+        maxResultCount:20,
+        fields:['displayName','id','location']
+      }).then(({places})=>{
+        if(resolved)return;
+        clearTimeout(t);
+        resolved=true;
+        
+        if(!window._logged){
+          window._logged=true;
+          dbg('=== searchByText ===');
+          dbg('KW: '+kw);
+          dbg('Biz: '+bizName);
+          dbg('PlaceID: '+(biz.placeId||'none'));
+          dbg('Got '+( places?places.length:0)+' results');
+          if(places) places.slice(0,5).forEach((p,i)=>dbg((i+1)+'. '+(p.displayName||'?')+' | '+(p.id||'?')));
+        }
+        
+        if(places&&places.length){
+          let i=-1;
+          if(biz.placeId) i=places.findIndex(p=>p.id===biz.placeId);
+          if(i<0) i=places.findIndex(p=>{
+            const pn=(p.displayName||'').toLowerCase().trim();
+            return pn===bizName||pn.includes(bizName)||bizName.includes(pn);
+          });
+          resolve(i>=0?i+1:21);
+        }else resolve(21);
+      }).catch(err=>{
+        if(resolved)return;
+        clearTimeout(t);
+        resolved=true;
+        dbg('ERROR: '+err.message);
+        resolve(21);
+      });
+    }else{
+      dbg('searchByText not available!');
+      resolve(21);
+    }
   });
 }
 
