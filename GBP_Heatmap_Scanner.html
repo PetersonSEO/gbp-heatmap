@@ -109,8 +109,12 @@ body{font-family:'DM Sans',sans-serif;background:#0f1117;color:#e8eaf0;height:10
       </div>
       <div class="dvd"><div class="dvd-line"></div><span>or use Place ID (best for SABs)</span><div class="dvd-line"></div></div>
       <div>
-        <div class="lbl">Google Place ID</div>
-        <div class="sub" style="margin-bottom:6px;">Find it at <a href="https://developers.google.com/maps/documentation/javascript/examples/places-placeid-finder" target="_blank" style="color:#3b7fff;">Place ID Finder ↗</a> or from GBP URL</div>
+        <div class="lbl">Click Business on Map</div>
+        <div class="sub">Pan the map to your business location and <strong style="color:#3b7fff">click directly on it</strong> — this captures its Place ID automatically and works for any GBP including SABs.</div>
+      </div>
+      <div>
+        <div class="lbl">Or Enter Place ID Directly</div>
+        <div class="sub" style="margin-bottom:6px;">Get from Google Maps URL or <a href="https://developers.google.com/maps/documentation/javascript/examples/places-placeid-finder" target="_blank" style="color:#3b7fff;">Place ID Finder ↗</a></div>
         <input id="pid-in" class="inp" type="text" placeholder="ChIJ..." />
         <button id="pid-btn" onclick="lookupPlaceId()" style="width:100%;margin-top:5px;padding:7px;font-size:12px;font-weight:600;border:1px solid rgba(59,127,255,0.5);border-radius:7px;background:rgba(59,127,255,0.1);color:#3b7fff;cursor:pointer;font-family:'DM Sans',sans-serif;">Lookup Place ID ↵</button>
       </div>
@@ -233,8 +237,31 @@ window.initMap=function(){
   psvc=new google.maps.places.PlacesService(map);
   acSvc=new google.maps.places.AutocompleteService();
   setupAC();
-  // Also set up native Autocomplete widget as backup
+  // Native Autocomplete widget
   setupWidget();
+  
+  // Click on map to select a business - captures Place ID directly
+  map.addListener('click', e=>{
+    if(e.placeId){
+      e.stop(); // prevent default info window
+      psvc.getDetails({
+        placeId:e.placeId,
+        fields:['geometry','name','formatted_address','place_id']
+      },(place,st)=>{
+        if(st===google.maps.places.PlacesServiceStatus.OK){
+          if(confirm(`Select "${place.name}" as your business?`)){
+            setBiz({
+              name:place.name,
+              address:place.formatted_address||'Service Area Business',
+              lat:place.geometry.location.lat(),
+              lng:place.geometry.location.lng(),
+              placeId:place.place_id
+            });
+          }
+        }
+      });
+    }
+  });
 };
 
 // ---- SEARCH ----
