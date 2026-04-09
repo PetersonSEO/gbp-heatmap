@@ -517,7 +517,8 @@ function drawMarks(results){
   const zoom=map.getZoom();
   const mpp=(156543.03392*Math.cos(results[0].lat*Math.PI/180))/Math.pow(2,zoom);
   const spacingPx=(parseFloat(scan.spacing)*1609.34)/mpp;
-  const R=Math.max(10,spacingPx*0.38);
+  // Cap radius so circles never overlap regardless of grid/spacing
+  const R=Math.min(spacingPx*0.38, spacingPx*0.45, 36);
   results.forEach(pt=>{
     const label=pt.rank>=20?'20+':String(pt.rank);
     const fs=label.length>2?Math.max(7,Math.round(R*0.44)):Math.max(9,Math.round(R*0.56));
@@ -535,53 +536,61 @@ function getRank(pos,kw){
   return new Promise(resolve=>{
     if(!biz){resolve(21);return;}
     const bizName=biz.name.toLowerCase().trim();
-    
-    // Use Places API New searchByText - confirmed enabled on this key
-    if(google.maps.places&&google.maps.places.Place&&google.maps.places.Place.searchByText){
-      let resolved=false;
-      // Timeout safety
-      const t=setTimeout(()=>{if(!resolved){resolved=true;dbg('TIMEOUT pt '+pos.lat.toFixed(3));resolve(21);}},10000);
-      
-      google.maps.places.Place.searchByText({
-        textQuery:kw,
-        locationBias:{circle:{center:{lat:pos.lat,lng:pos.lng},radius:2000}},
-        maxResultCount:20,
-        fields:['displayName','id','location']
-      }).then(({places})=>{
-        if(resolved)return;
-        clearTimeout(t);
-        resolved=true;
-        
-        if(!window._logged){
-          window._logged=true;
-          dbg('=== searchByText ===');
-          dbg('KW: '+kw);
-          dbg('Biz: '+bizName);
-          dbg('PlaceID: '+(biz.placeId||'none'));
-          dbg('Got '+( places?places.length:0)+' results');
-          if(places) places.slice(0,5).forEach((p,i)=>dbg((i+1)+'. '+(p.displayName||'?')+' | '+(p.id||'?')));
-        }
-        
-        if(places&&places.length){
-          let i=-1;
-          if(biz.placeId) i=places.findIndex(p=>p.id===biz.placeId);
-          if(i<0) i=places.findIndex(p=>{
-            const pn=(p.displayName||'').toLowerCase().trim();
-            return pn===bizName||pn.includes(bizName)||bizName.includes(pn);
-          });
-          resolve(i>=0?i+1:21);
-        }else resolve(21);
-      }).catch(err=>{
-        if(resolved)return;
-        clearTimeout(t);
-        resolved=true;
-        dbg('ERROR: '+err.message);
-        resolve(21);
-      });
-    }else{
-      dbg('searchByText not available!');
-      resolve(21);
-    }
+    let resolved=false;
+    const done=(rank)=>{if(!resolved){resolved=true;resolve(rank);}};
+    const t=setTimeout(()=>done(21),10000);
+
+    // Use psvc.textSearch - different from nearbySearch, less likely to hang
+    psvc.textSearch({
+      query:kw,
+      location:new google.maps.LatLng(pos.lat,pos.lng),
+      radius:5000
+    },(res,st)=>{
+      clearTimeout(t);
+      if(!window._logged){
+        window._logged=true;
+        dbg('=== textSearch ===');
+        dbg('KW: '+kw+' | Biz: '+bizName);
+        dbg('Status: '+st+' | Results: '+(res?res.length:0));
+        if(res) res.slice(0,5).forEach((r,i)=>dbg((i+1)+'. '+r.name+' | '+r.place_id));
+      }
+      if(st===google.maps.places.PlacesServiceStatus.OK&&res&&res.length){
+        let i=-1;
+        if(biz.placeId) i=res.findIndex(r=>r.place_id===biz.placeId);
+        if(i<0) i=res.findIndex(r=>{
+          const rn=(r.name||'').toLowerCase().trim();
+          return rn===bizName||rn.includes(bizName)||bizName.includes(rn);
+        });
+        done(i>=0?i+1:21);
+      }else{
+        dbg('textSearch failed: '+st+' - trying searchByText');
+        // fallback to searchByText
+        if(google.maps.places.Place&&google.maps.places.Place.searchByText){
+          google.maps.places.Place.searchByText({
+            textQuery:kw,
+            locationBias:{circle:{center:{lat:pos.lat,lng:pos.lng},radius:5000}},
+            maxResultCount:20,
+            fields:['displayName','id']
+          }).then(({places})=>{
+            if(!window._logged2){
+              window._logged2=true;
+              dbg('=== searchByText fallback ===');
+              dbg('Results: '+(places?places.length:0));
+              if(places) places.slice(0,5).forEach((p,i)=>dbg((i+1)+'. '+(p.displayName||'?')));
+            }
+            if(places&&places.length){
+              let i=-1;
+              if(biz.placeId) i=places.findIndex(p=>p.id===biz.placeId);
+              if(i<0) i=places.findIndex(p=>{
+                const pn=(p.displayName||'').toLowerCase().trim();
+                return pn===bizName||pn.includes(bizName)||bizName.includes(pn);
+              });
+              done(i>=0?i+1:21);
+            }else done(21);
+          }).catch(()=>done(21));
+        }else done(21);
+      }
+    });
   });
 }
 
